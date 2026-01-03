@@ -2,12 +2,44 @@ using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using Scrappy.Data;
+using System.Runtime.InteropServices;
 
 namespace Scrappy.Modules;
 
 public class UtilityModule : ScrappyModuleBase
 {
-    public UtilityModule(BotContext db) : base(db) { }
+    private readonly BotService _botService;
+    private readonly Scrappy.Services.SystemMonitorService _sysMonitor;
+
+    public UtilityModule(BotContext db, BotService botService, Scrappy.Services.SystemMonitorService sysMonitor) : base(db)
+    {
+        _botService = botService;
+        _sysMonitor = sysMonitor;
+    }
+
+    [SlashCommand("status", "View detailed bot and server health information.")]
+    public async Task Status()
+    {
+        if (!await CheckPermissionsAsync("Utility")) return;
+
+        var client = _botService.Client;
+        var uptime = DateTime.UtcNow - _botService.StartTime;
+        var memUsage = _sysMonitor.GetMemoryUsage() / 1024 / 1024; // MB
+        var storage = _sysMonitor.GetStorageInfo();
+
+        var embed = new EmbedBuilder()
+            .WithTitle("🛰️ System Status Report")
+            .WithColor(client.Latency < 150 ? Color.Green : Color.Orange)
+            .AddField("🤖 Bot Identity", $"**Status:** {client.ConnectionState}\n**Latency:** {client.Latency}ms\n**Uptime:** {uptime.Days}d {uptime.Hours}h {uptime.Minutes}m", true)
+            .AddField("💻 Server Resources", $"**CPU:** {Math.Round(_sysMonitor.GetCpuUsage(), 2)}%\n**RAM:** {memUsage} MB\n**OS:** {RuntimeInformation.OSDescription}", true)
+            .AddField("🗄️ Storage ({storage.DriveName})", $"**Used:** {Math.Round(storage.UsedSpace / 1024.0 / 1024 / 1024, 2)} GB\n**Free:** {Math.Round(storage.AvailableFreeSpace / 1024.0 / 1024 / 1024, 2)} GB\n**Usage:** {storage.UsagePercentage}%", false)
+            .AddField("📊 Bot Scale", $"**Guilds:** {client.Guilds.Count}\n**Total Users:** {client.Guilds.Sum(g => g.MemberCount)}", true)
+            .WithFooter($"Process ID: {Environment.ProcessId} | .NET {Environment.Version}")
+            .WithCurrentTimestamp()
+            .Build();
+
+        await RespondAsync(embed: embed);
+    }
 
     [SlashCommand("serverinfo", "Display information about this server.")]
     public async Task ServerInfo()
