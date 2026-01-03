@@ -2,7 +2,6 @@ using Discord;
 using Discord.Interactions;
 using Discord.WebSocket;
 using Microsoft.AspNetCore.Authentication.Cookies;
-using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -45,41 +44,7 @@ builder.Services.AddHostedService<Scrappy.Services.ReminderService>();
 builder.Services.AddHostedService<Scrappy.Services.FeedService>();
 builder.Services.AddHostedService<Scrappy.Services.FreeGamesService>();
 
-// 4. Setup Web Services (Blazor & Auth)
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowAll", policy =>
-    {
-        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
-    });
-});
-
-builder.Services.AddRazorPages();
-builder.Services.AddServerSideBlazor(options =>
-{
-    options.DetailedErrors = true;
-});
-
-// CRITICAL: Cookie Policy to fix "Correlation Failed" on mobile/external access
-builder.Services.Configure<CookiePolicyOptions>(options =>
-{
-    // This allows cookies to be set on HTTP (non-secure) connections for development
-    options.MinimumSameSitePolicy = SameSiteMode.Lax;
-    options.Secure = CookieSecurePolicy.SameAsRequest; 
-    
-    options.OnAppendCookie = cookieContext =>
-    {
-        // Force Lax for Auth and Correlation cookies to ensure they survive the OAuth redirect
-        if (cookieContext.CookieName.StartsWith(".AspNetCore.Cookies") || 
-            cookieContext.CookieName.StartsWith(".AspNetCore.Correlation") ||
-            cookieContext.CookieName.Contains("Nonce"))
-        {
-            cookieContext.CookieOptions.SameSite = SameSiteMode.Lax;
-            cookieContext.CookieOptions.Secure = false; // Important since we are on HTTP
-        }
-    };
-});
-
+// 4. Setup Auth
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultScheme = CookieAuthenticationDefaults.AuthenticationScheme;
@@ -113,6 +78,8 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
+builder.Services.AddAuthorization();
+
 var app = builder.Build();
 
 // 5. Database Migration
@@ -123,38 +90,20 @@ using (var scope = app.Services.CreateScope())
 }
 
 // 6. Configure Pipeline
-if (!app.Environment.IsDevelopment())
-{
-    app.UseExceptionHandler("/Error");
-}
-
-// Important for proxy/external IP handling
 app.UseForwardedHeaders(new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
 });
 
-app.UseCors("AllowAll");
-
 app.UseStaticFiles();
 app.UseRouting();
-
-// Apply the Cookie Policy BEFORE Authentication
-app.UseCookiePolicy();
 app.UseAuthentication();
 app.UseAuthorization();
-
-app.MapBlazorHub(options =>
-{
-    options.Transports = Microsoft.AspNetCore.Http.Connections.HttpTransportType.WebSockets | 
-                         Microsoft.AspNetCore.Http.Connections.HttpTransportType.LongPolling;
-});
-app.MapFallbackToPage("/_Host");
 
 // Endpoint for Login
 app.MapGet("/login", async (context) =>
 {
-    await Microsoft.AspNetCore.Authentication.AuthenticationHttpContextExtensions.ChallengeAsync(context, "Discord", new Microsoft.AspNetCore.Authentication.AuthenticationProperties { RedirectUri = "/" });
+    await Microsoft.AspNetCore.Authentication.AuthenticationHttpContextExtensions.ChallengeAsync(context, "Discord", new Microsoft.AspNetCore.Authentication.AuthenticationProperties { RedirectUri = "/dashboard" });
 });
 
 // Endpoint for Logout
@@ -164,41 +113,44 @@ app.MapGet("/logout", async (context) =>
     context.Response.Redirect("/");
 });
 
-app.MapGet("/api/stats", (Scrappy.Services.SystemMonitorService sys, BotService bot) =>
+// Serve Dashboard
+app.MapGet("/dashboard", (HttpContext context) => 
 {
-    var client = bot.Client;
-    var guilds = client.Guilds.Select(g => new
+    if (context.User.Identity?.IsAuthenticated != true) return Results.Redirect("/login");
+    return Results.File(Path.Combine(app.Environment.WebRootPath, "index.html"), "text/html");
+});
+
+app.MapGet("/", () => Results.Redirect("/dashboard"));
+
+// API: Get all guilds
+app.MapGet("/api/guilds", (DiscordSocketClient client) =>
+{
+    return Results.Ok(client.Guilds.Select(g => new
     {
         g.Id,
         g.Name,
-        MemberCount = g.MemberCount,
-        IconUrl = g.IconUrl
-    }).ToList();
+        IconUrl = g.IconUrl ?? "https://cdn.discordapp.com/embed/avatars/0.png",
+        MemberCount = g.MemberCount
+    }));
+});
 
+// API: Get guild details
+app.MapGet("/api/guilds/{id}", async (ulong id, DiscordSocketClient client, BotContext db) =>
+{
+    var guild = client.GetGuild(id);
+    if (guild == null) return Results.NotFound();
+    var settings = await db.GuildSettings.FindAsync(id) ?? new GuildSettings { GuildId = id };
+    return Results.Ok(new { Guild = new { guild.Id, guild.Name, IconUrl = guild.IconUrl ?? "https://cdn.discordapp.com/embed/avatars/0.png", guild.MemberCount, BotCount = guild.Users.Count(u => u.IsBot), OnlineCount = guild.Users.Count(u => u.Status != UserStatus.Offline), guild.PremiumTier, guild.VerificationLevel, OwnerName = guild.Owner?.Username ?? "Unknown" }, Settings = settings });
+});
+
+app.MapGet("/api/stats", (Scrappy.Services.SystemMonitorService sys, BotService bot) =>
+{
+    var client = bot.Client;
     return Results.Ok(new
     {
-        System = new
-        {
-            CpuUsage = sys.GetCpuUsage(),
-            MemoryUsage = sys.GetMemoryUsage(),
-            Storage = sys.GetStorageInfo(),
-            OS = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
-            ProcessorCount = Environment.ProcessorCount
-        },
-        Bot = new
-        {
-            Status = client.ConnectionState.ToString(),
-            Latency = client.Latency,
-            GuildCount = client.Guilds.Count,
-            TotalUsers = client.Guilds.Sum(g => g.MemberCount),
-            Uptime = (DateTime.UtcNow - bot.StartTime).ToString(@"dd\.hh\:mm\:ss"),
-            Guilds = guilds
-        }
+        System = new { CpuUsage = sys.GetCpuUsage(), MemoryUsage = sys.GetMemoryUsage(), Storage = sys.GetStorageInfo(), OS = System.Runtime.InteropServices.RuntimeInformation.OSDescription, ProcessorCount = Environment.ProcessorCount },
+        Bot = new { Status = client.ConnectionState.ToString(), Latency = client.Latency, GuildCount = client.Guilds.Count, TotalUsers = client.Guilds.Sum(g => g.MemberCount), Uptime = (DateTime.UtcNow - bot.StartTime).ToString(@"dd\.hh\:mm\:ss") }
     });
 });
 
 app.Run();
-
-
-
-

@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SCRAPPY | Dashboard</title>
+    
+    <!-- Design System -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#6366f1',
+                        dark: '#0a0a0a',
+                        surface: '#121212',
+                        'surface-light': '#1e1e1e'
+                    },
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body { background-color: #0a0a0a; color: white; -webkit-tap-highlight-color: transparent; }
+        .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
+        .hide-scroll::-webkit-scrollbar { display: none; }
+        .nav-active { color: #6366f1; background: rgba(99, 102, 241, 0.1); }
+    </style>
+</head>
+<body class="font-sans antialiased">
+
+    <!-- Loading Overlay -->
+    <div id="loading" class="fixed inset-0 z-[100] bg-dark flex items-center justify-center transition-opacity duration-500">
+        <div class="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+    </div>
+
+    <div class="flex flex-col md:flex-row min-h-screen">
+        
+        <!-- Sidebar (Desktop) -->
+        <aside class="hidden md:flex w-72 flex-col fixed inset-y-0 bg-dark border-r border-white/5 p-6 space-y-8">
+            <div class="flex items-center gap-3 px-2">
+                <div class="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center shadow-lg shadow-primary/20">
+                    <span class="material-icons-round text-white">bolt</span>
+                </div>
+                <span class="font-extrabold text-2xl tracking-tighter italic">SCRAPPY</span>
+            </div>
+
+            <nav class="flex-1 space-y-1">
+                <p class="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em] px-4 mb-4">Management</p>
+                <button onclick="showPage('overview')" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all hover:bg-white/5 nav-item" id="nav-overview">
+                    <span class="material-icons-round">grid_view</span> Overview
+                </button>
+                <button onclick="showPage('moderation')" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all hover:bg-white/5 nav-item" id="nav-moderation">
+                    <span class="material-icons-round">gavel</span> Moderation
+                </button>
+                <button onclick="showPage('settings')" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all hover:bg-white/5 nav-item" id="nav-settings">
+                    <span class="material-icons-round">settings</span> Settings
+                </button>
+            </nav>
+
+            <div class="pt-4 border-t border-white/5">
+                <button onclick="location.href='/logout'" class="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-400/10 rounded-2xl font-bold transition-all">
+                    <span class="material-icons-round">logout</span> Sign Out
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 md:ml-72 flex flex-col min-h-screen">
+            
+            <!-- Top Bar -->
+            <header class="h-20 border-b border-white/5 px-6 flex items-center justify-between sticky top-0 bg-dark/80 backdrop-blur-md z-40">
+                <div class="flex items-center gap-4">
+                    <div id="server-selector-trigger" class="flex items-center gap-3 cursor-pointer p-2 rounded-2xl hover:bg-white/5 transition-all">
+                        <img id="guild-icon" src="" class="w-10 h-10 rounded-xl bg-surface-light border border-white/10 shadow-lg">
+                        <div class="flex flex-col">
+                            <h2 id="guild-name" class="font-bold text-sm leading-tight">Loading Server...</h2>
+                            <span class="text-[10px] font-black text-primary uppercase tracking-widest leading-none mt-1">Administrator</span>
+                        </div>
+                        <span class="material-icons-round text-gray-500 ml-2">expand_more</span>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Page Container -->
+            <div id="content" class="p-6 sm:p-10 flex-1 pb-32">
+                <!-- Content will be injected here via JS -->
+            </div>
+        </main>
+
+        <!-- Mobile Nav -->
+        <nav class="md:hidden fixed bottom-6 left-6 right-6 h-20 bg-dark/90 backdrop-blur-xl border border-white/10 rounded-[2.5rem] shadow-2xl z-50 flex items-center justify-around px-4">
+            <button onclick="showPage('overview')" class="flex flex-col items-center gap-1 nav-item" id="nav-mobile-overview">
+                <span class="material-icons-round text-2xl">grid_view</span>
+                <span class="text-[8px] font-black uppercase">Home</span>
+            </button>
+            <button onclick="showPage('moderation')" class="flex flex-col items-center gap-1 nav-item" id="nav-mobile-moderation">
+                <span class="material-icons-round text-2xl">gavel</span>
+                <span class="text-[8px] font-black uppercase">Mod</span>
+            </button>
+            <button onclick="showPage('settings')" class="flex flex-col items-center gap-1 nav-item" id="nav-mobile-settings">
+                <span class="material-icons-round text-2xl">settings</span>
+                <span class="text-[8px] font-black uppercase">Set</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- JavaScript logic -->
+    <script>
+        let currentGuildId = null;
+        let guildData = null;
+
+        async function init() {
+            try {
+                // Get the first guild automatically for now
+                const response = await fetch('/api/guilds');
+                const guilds = await response.json();
+                if (guilds.length > 0) {
+                    await selectGuild(guilds[0].id);
+                }
+            } catch (err) {
+                console.error("Failed to load dashboard data", err);
+            } finally {
+                document.getElementById('loading').style.opacity = '0';
+                setTimeout(() => document.getElementById('loading').style.display = 'none', 500);
+            }
+        }
+
+        async function selectGuild(id) {
+            currentGuildId = id;
+            const res = await fetch(`/api/guilds/${id}`);
+            const data = await res.json();
+            guildData = data;
+            
+            document.getElementById('guild-name').innerText = data.guild.name;
+            document.getElementById('guild-icon').src = data.guild.iconUrl;
+            
+            showPage('overview');
+        }
+
+        function showPage(page) {
+            const content = document.getElementById('content');
+            
+            // Update Active Nav
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('nav-active'));
+            document.getElementById(`nav-${page}`)?.classList.add('nav-active');
+            document.getElementById(`nav-mobile-${page}`)?.classList.add('nav-active');
+
+            if (page === 'overview') {
+                content.innerHTML = `
+                    <div class="animate-in fade-in duration-500">
+                        <div class="mb-10">
+                            <h1 class="text-4xl font-extrabold tracking-tighter mb-2">Dashboard Overview</h1>
+                            <p class="text-gray-500 font-medium">Monitoring ${guildData.guild.name} in real-time.</p>
+                        </div>
+                        
+                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+                            <div class="bg-surface border border-white/5 p-6 rounded-[2.5rem]">
+                                <span class="text-[10px] font-black uppercase text-gray-500 tracking-widest block mb-2">Members</span>
+                                <div class="text-4xl font-black">${guildData.guild.memberCount}</div>
+                                <div class="text-xs font-bold text-green-500 mt-2">Active Population</div>
+                            </div>
+                            <div class="bg-surface border border-white/5 p-6 rounded-[2.5rem]">
+                                <span class="text-[10px] font-black uppercase text-gray-500 tracking-widest block mb-2">Bots</span>
+                                <div class="text-4xl font-black">${guildData.guild.botCount}</div>
+                                <div class="text-xs font-bold text-primary mt-2">AI Agents</div>
+                            </div>
+                            <div class="bg-surface border border-white/5 p-6 rounded-[2.5rem]">
+                                <span class="text-[10px] font-black uppercase text-gray-500 tracking-widest block mb-2">Premium</span>
+                                <div class="text-4xl font-black">Tier ${guildData.guild.premiumTier}</div>
+                                <div class="text-xs font-bold text-pink-500 mt-2">Server Boost Level</div>
+                            </div>
+                            <div class="bg-surface border border-white/5 p-6 rounded-[2.5rem]">
+                                <span class="text-[10px] font-black uppercase text-gray-500 tracking-widest block mb-2">Online</span>
+                                <div class="text-4xl font-black">${guildData.guild.onlineCount}</div>
+                                <div class="text-xs font-bold text-blue-500 mt-2">Currently Presence</div>
+                            </div>
+                        </div>
+
+                        <div class="bg-surface border border-white/5 p-8 rounded-[3rem] flex flex-col lg:flex-row items-center gap-10">
+                            <div class="relative">
+                                <img src="${guildData.guild.iconUrl}" class="w-32 h-32 rounded-[2.5rem] relative z-10 shadow-2xl shadow-primary/20">
+                                <div class="absolute inset-0 bg-primary/20 blur-3xl rounded-full scale-150"></div>
+                            </div>
+                            <div class="flex-1 text-center lg:text-left">
+                                <h2 class="text-3xl font-black mb-2">${guildData.guild.name}</h2>
+                                <p class="text-gray-400 font-bold mb-6">Owner: <span class="text-white">${guildData.guild.ownerName}</span></p>
+                                <div class="flex flex-wrap justify-center lg:justify-start gap-4 text-xs font-bold uppercase tracking-widest text-gray-500">
+                                    <div class="px-4 py-2 bg-white/5 rounded-full">ID: ${guildData.guild.id}</div>
+                                    <div class="px-4 py-2 bg-white/5 rounded-full">${guildData.guild.verificationLevel} Verification</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else if (page === 'settings') {
+                content.innerHTML = `
+                    <div class="animate-in fade-in duration-500 max-w-2xl mx-auto">
+                        <div class="mb-10 text-center">
+                            <h1 class="text-4xl font-extrabold tracking-tighter mb-2">Global Settings</h1>
+                            <p class="text-gray-500 font-medium">Configure Scrappy's behavior for this server.</p>
+                        </div>
+
+                        <div class="space-y-4">
+                            <div class="bg-surface border border-white/5 p-6 rounded-[2rem] flex items-center justify-between group hover:border-primary/30 transition-all">
+                                <div>
+                                    <h3 class="font-bold text-lg">Analytics Tracking</h3>
+                                    <p class="text-xs text-gray-500">Track server activity and messages.</p>
+                                </div>
+                                <div class="w-12 h-6 bg-primary rounded-full relative flex items-center px-1">
+                                    <div class="w-4 h-4 bg-white rounded-full ml-auto shadow-md"></div>
+                                </div>
+                            </div>
+
+                            <div class="bg-surface border border-white/5 p-6 rounded-[2rem] flex items-center justify-between group hover:border-primary/30 transition-all">
+                                <div>
+                                    <h3 class="font-bold text-lg">Welcome Messages</h3>
+                                    <p class="text-xs text-gray-500">Announce new members when they join.</p>
+                                </div>
+                                <div class="w-12 h-6 bg-white/10 rounded-full relative flex items-center px-1">
+                                    <div class="w-4 h-4 bg-gray-500 rounded-full shadow-md"></div>
+                                </div>
+                            </div>
+
+                            <div class="pt-10 flex justify-center">
+                                <button class="px-12 py-5 bg-primary rounded-[1.5rem] font-black text-lg shadow-2xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
+                                    Save Configuration
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
