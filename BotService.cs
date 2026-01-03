@@ -55,6 +55,8 @@ public class BotService : IHostedService
 
         // Handle Messages (Word Filter & Analytics)
         _client.MessageReceived += OnMessageReceived;
+        _client.MessageUpdated += OnMessageUpdated;
+        _client.MessageDeleted += OnMessageDeleted;
 
         // Handle Voice State (Analytics)
         _client.UserVoiceStateUpdated += OnUserVoiceStateUpdated;
@@ -250,6 +252,73 @@ public class BotService : IHostedService
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error handling message received");
+        }
+    }
+
+    private async Task OnMessageUpdated(Cacheable<IMessage, ulong> before, SocketMessage after, ISocketMessageChannel channel)
+    {
+        if (after.Author.IsBot || channel is not SocketTextChannel textChannel) return;
+
+        try
+        {
+            using (var scope = _scopeFactory.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<Scrappy.Data.BotContext>();
+                var settings = await db.GuildSettings.FindAsync(textChannel.Guild.Id);
+
+                if (settings == null || !settings.ModLogEnabled || !settings.MessageLoggingEnabled) return;
+
+                // Try to get old content from database since cache might be empty
+                var oldRecord = await db.MessageRecords.FindAsync(after.Id);
+                var oldContent = oldRecord?.Content ?? (before.HasValue ? before.Value.Content : "Unknown (Not in cache/DB)");
+
+                if (oldContent == after.Content) return; // Ignore if content didn't change (e.g. just embeds added)
+
+                await LogToModLogAsync(textChannel.Guild, db, "📝 Message Edited", 
+                    $"**User:** {after.Author.Mention} ({after.Author.Id})\n**Channel:** {textChannel.Mention}\n\n**Before:**\n{oldContent}\n\n**After:**\n{after.Content}", Color.Blue);
+
+                // Update record in DB
+                if (oldRecord != null)
+                {
+                    oldRecord.Content = after.Content;
+                    await db.SaveChangesAsync();
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error handling message updated");
+        }
+    }
+
+    private async Task OnMessageDeleted(Cacheable<IMessage, ulong> cachedMsg, Cacheable<IMessageChannel, ulong> cachedChannel)
+    {
+        var channel = await cachedChannel.GetOrDownloadAsync();
+        if (channel is not SocketTextChannel textChannel) return;
+
+        try
+        {
+            using (var scope = _scopeFactory.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<Scrappy.Data.BotContext>();
+                var settings = await db.GuildSettings.FindAsync(textChannel.Guild.Id);
+
+                if (settings == null || !settings.ModLogEnabled || !settings.MessageLoggingEnabled) return;
+
+                // Try to get record from DB
+                var oldRecord = await db.MessageRecords.FindAsync(cachedMsg.Id);
+                if (oldRecord == null && !cachedMsg.HasValue) return;
+
+                var content = oldRecord?.Content ?? cachedMsg.Value.Content;
+                var authorMention = oldRecord != null ? $"<@{oldRecord.UserId}>" : cachedMsg.Value.Author.Mention;
+
+                await LogToModLogAsync(textChannel.Guild, db, "🗑️ Message Deleted", 
+                    $"**User:** {authorMention}\n**Channel:** {textChannel.Mention}\n\n**Content:**\n{content}", Color.Red);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error handling message deleted");
         }
     }
 
