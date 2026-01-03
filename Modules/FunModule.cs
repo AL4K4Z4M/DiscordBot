@@ -13,6 +13,8 @@ public class FunModule : ScrappyModuleBase
     [SlashCommand("8ball", "Ask the magic 8-ball a question.")]
     public async Task Magic8Ball(string question)
     {
+        if (!await IsFeatureEnabledAsync(s => s.SayHelloEnabled)) return;
+
         string[] responses = {
             "It is certain.", "It is decidedly so.", "Without a doubt.", "Yes definitely.",
             "You may rely on it.", "As I see it, yes.", "Most likely.", "Outlook good.",
@@ -38,6 +40,8 @@ public class FunModule : ScrappyModuleBase
     [SlashCommand("coinflip", "Flip a coin.")]
     public async Task CoinFlip()
     {
+        if (!await IsFeatureEnabledAsync(s => s.SayHelloEnabled)) return;
+
         var result = _random.Next(2) == 0 ? "Heads" : "Tails";
         
         var embed = new EmbedBuilder()
@@ -52,6 +56,8 @@ public class FunModule : ScrappyModuleBase
     [SlashCommand("roll", "Roll some dice (e.g., 2d6).")]
     public async Task RollDice(string dice = "1d6")
     {
+        if (!await IsFeatureEnabledAsync(s => s.SayHelloEnabled)) return;
+
         var parts = dice.ToLower().Split('d');
         if (parts.Length != 2 || !int.TryParse(parts[0], out int count) || !int.TryParse(parts[1], out int sides))
         {

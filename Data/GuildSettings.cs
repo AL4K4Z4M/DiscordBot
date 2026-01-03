@@ -31,6 +31,7 @@ public class GuildSettings
     public bool WarnEnabled { get; set; } = true;
     public int WarnLimitBeforeTimeout { get; set; } = 3;
     public int WarnTimeoutDuration { get; set; } = 60; // Minutes
+    public bool AutoPunishEnabled { get; set; } = true;
     public bool ModLogEnabled { get; set; } = true;
     public bool WordFilterEnabled { get; set; } = true;
 

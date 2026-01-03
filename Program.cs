@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Scrappy;
 using Scrappy.Data;
 using System.Security.Claims;
@@ -43,6 +44,21 @@ builder.Services.AddHostedService<BotService>(x => x.GetRequiredService<BotServi
 builder.Services.AddHostedService<Scrappy.Services.ReminderService>();
 builder.Services.AddHostedService<Scrappy.Services.FeedService>();
 builder.Services.AddHostedService<Scrappy.Services.FreeGamesService>();
+
+// CRITICAL: Cookie Policy to fix "Correlation Failed" on OAuth redirects
+builder.Services.Configure<CookiePolicyOptions>(options =>
+{
+    options.MinimumSameSitePolicy = SameSiteMode.Lax;
+    options.Secure = CookieSecurePolicy.SameAsRequest; 
+    options.OnAppendCookie = cookieContext =>
+    {
+        if (cookieContext.CookieName.Contains("Correlation") || cookieContext.CookieName.Contains("Nonce"))
+        {
+            cookieContext.CookieOptions.SameSite = SameSiteMode.Lax;
+            cookieContext.CookieOptions.Secure = false;
+        }
+    };
+});
 
 // 4. Setup Auth
 builder.Services.AddAuthentication(options =>
@@ -97,6 +113,7 @@ app.UseForwardedHeaders(new ForwardedHeadersOptions
 
 app.UseStaticFiles();
 app.UseRouting();
+app.UseCookiePolicy();
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -113,6 +130,16 @@ app.MapGet("/logout", async (context) =>
     context.Response.Redirect("/");
 });
 
+// API: Get bot config
+app.MapGet("/api/config", (IConfiguration config) => Results.Ok(new { ClientId = config["Discord:ClientId"] }));
+
+// API: Get current user info
+app.MapGet("/api/user", (HttpContext context) =>
+{
+    if (context.User.Identity?.IsAuthenticated != true) return Results.Unauthorized();
+    return Results.Ok(new { Name = context.User.Identity.Name, AvatarUrl = context.User.FindFirst("urn:discord:avatar")?.Value });
+});
+
 // Serve Dashboard
 app.MapGet("/dashboard", (HttpContext context) => 
 {
@@ -120,27 +147,192 @@ app.MapGet("/dashboard", (HttpContext context) =>
     return Results.File(Path.Combine(app.Environment.WebRootPath, "index.html"), "text/html");
 });
 
-app.MapGet("/", () => Results.Redirect("/dashboard"));
-
-// API: Get all guilds
-app.MapGet("/api/guilds", (DiscordSocketClient client) =>
+app.MapGet("/", (HttpContext context) => 
 {
-    return Results.Ok(client.Guilds.Select(g => new
-    {
-        g.Id,
-        g.Name,
-        IconUrl = g.IconUrl ?? "https://cdn.discordapp.com/embed/avatars/0.png",
-        MemberCount = g.MemberCount
-    }));
+    if (context.User.Identity?.IsAuthenticated == true) return Results.Redirect("/dashboard");
+    return Results.File(Path.Combine(app.Environment.WebRootPath, "landing.html"), "text/html");
 });
 
-// API: Get guild details
-app.MapGet("/api/guilds/{id}", async (ulong id, DiscordSocketClient client, BotContext db) =>
+// API: Get all guilds (IDs as Strings!)
+app.MapGet("/api/guilds", (DiscordSocketClient client) =>
 {
-    var guild = client.GetGuild(id);
+    if (client.ConnectionState != ConnectionState.Connected) return Results.StatusCode(503);
+    return Results.Ok(client.Guilds.Select(g => new { Id = g.Id.ToString(), Name = g.Name, IconUrl = g.IconUrl ?? "https://cdn.discordapp.com/embed/avatars/0.png", MemberCount = g.MemberCount }));
+});
+
+// API: Get guild details (IDs as Strings!)
+app.MapGet("/api/guilds/{id}", async (string id, DiscordSocketClient client, BotContext db, ILogger<Program> logger) =>
+{
+    if (client.ConnectionState != ConnectionState.Connected) return Results.StatusCode(503);
+    if (!ulong.TryParse(id, out var guildId)) return Results.BadRequest();
+
+    var guild = client.GetGuild(guildId) ?? client.Guilds.FirstOrDefault(g => g.Id == guildId);
+    
+    if (guild == null) {
+        logger.LogWarning("Dashboard requested guild {id} but it was not found in cache. Cached count: {count}", id, client.Guilds.Count);
+        return Results.NotFound();
+    }
+
+    var settings = await db.GuildSettings.FindAsync(guildId) ?? new GuildSettings { GuildId = guildId };
+
+    return Results.Ok(new { 
+        Guild = new { 
+            Id = guild.Id.ToString(), 
+            guild.Name, 
+            IconUrl = guild.IconUrl ?? "https://cdn.discordapp.com/embed/avatars/0.png", 
+            guild.MemberCount, 
+            BotCount = guild.Users.Count(u => u.IsBot), 
+            OnlineCount = guild.Users.Count(u => u.Status != UserStatus.Offline), 
+            guild.PremiumTier, 
+            guild.VerificationLevel, 
+            OwnerName = guild.Owner?.Username ?? "Unknown" 
+        }, 
+        Settings = settings 
+    });
+});
+
+// API: Update guild settings (Universal)
+app.MapPost("/api/guilds/{id}/settings", async (string id, HttpContext context, BotContext db) =>
+{
+    if (!ulong.TryParse(id, out var guildId)) return Results.BadRequest();
+    
+    var settings = await db.GuildSettings.FindAsync(guildId);
+    if (settings == null) {
+        settings = new GuildSettings { GuildId = guildId };
+        db.GuildSettings.Add(settings);
+    }
+
+    var updates = await context.Request.ReadFromJsonAsync<Dictionary<string, object>>();
+    if (updates == null) return Results.BadRequest();
+
+    foreach (var update in updates)
+    {
+        // Use case-insensitive lookup to match 'wordFilterEnabled' to 'WordFilterEnabled'
+        var prop = settings.GetType().GetProperty(update.Key, System.Reflection.BindingFlags.IgnoreCase | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+        if (prop != null && prop.CanWrite)
+        {
+            try {
+                var val = update.Value?.ToString();
+                if (prop.PropertyType == typeof(bool)) 
+                {
+                    // Handle JSON boolean types correctly
+                    if (update.Value is bool b) prop.SetValue(settings, b);
+                    else prop.SetValue(settings, bool.Parse(val ?? "false"));
+                }
+                else if (prop.PropertyType == typeof(string)) prop.SetValue(settings, val);
+                else if (prop.PropertyType == typeof(int)) prop.SetValue(settings, int.Parse(val ?? "0"));
+                else if (prop.PropertyType == typeof(ulong?)) prop.SetValue(settings, string.IsNullOrEmpty(val) ? (ulong?)null : ulong.Parse(val));
+            } catch { /* Ignore malformed updates */ }
+        }
+    }
+
+    await db.SaveChangesAsync();
+    return Results.Ok(settings);
+});
+
+// API: Get guild channels
+app.MapGet("/api/guilds/{id}/channels", (string id, DiscordSocketClient client) =>
+{
+    if (client.ConnectionState != ConnectionState.Connected) return Results.StatusCode(503);
+    if (!ulong.TryParse(id, out var guildId)) return Results.BadRequest();
+    var guild = client.GetGuild(guildId);
     if (guild == null) return Results.NotFound();
-    var settings = await db.GuildSettings.FindAsync(id) ?? new GuildSettings { GuildId = id };
-    return Results.Ok(new { Guild = new { guild.Id, guild.Name, IconUrl = guild.IconUrl ?? "https://cdn.discordapp.com/embed/avatars/0.png", guild.MemberCount, BotCount = guild.Users.Count(u => u.IsBot), OnlineCount = guild.Users.Count(u => u.Status != UserStatus.Offline), guild.PremiumTier, guild.VerificationLevel, OwnerName = guild.Owner?.Username ?? "Unknown" }, Settings = settings });
+
+    return Results.Ok(guild.TextChannels
+        .OrderBy(c => c.Position)
+        .Select(c => new { Id = c.Id.ToString(), Name = c.Name }));
+});
+
+// API: Get guild roles
+app.MapGet("/api/guilds/{id}/roles", (string id, DiscordSocketClient client) =>
+{
+    if (client.ConnectionState != ConnectionState.Connected) return Results.StatusCode(503);
+    if (!ulong.TryParse(id, out var guildId)) return Results.BadRequest();
+    var guild = client.GetGuild(guildId);
+    if (guild == null) return Results.NotFound();
+
+    return Results.Ok(guild.Roles
+        .Where(r => !r.IsEveryone)
+        .OrderByDescending(r => r.Position)
+        .Select(r => new { 
+            Id = r.Id.ToString(), 
+            Name = r.Name, 
+            Color = $"#{r.Color.RawValue:X6}" 
+        }));
+});
+
+// API: Get all social feeds for a guild
+app.MapGet("/api/guilds/{id}/feeds", async (string id, BotContext db) =>
+{
+    if (!ulong.TryParse(id, out var guildId)) return Results.BadRequest();
+    var feeds = await db.SocialFeeds.Where(f => f.GuildId == guildId).ToListAsync();
+    return Results.Ok(feeds);
+});
+
+// API: Add a new social feed
+app.MapPost("/api/guilds/{id}/feeds", async (string id, HttpContext context, BotContext db) =>
+{
+    if (!ulong.TryParse(id, out var guildId)) return Results.BadRequest();
+    var feed = await context.Request.ReadFromJsonAsync<SocialFeed>();
+    if (feed == null) return Results.BadRequest();
+
+    feed.GuildId = guildId;
+    feed.LastChecked = DateTime.UtcNow;
+    db.SocialFeeds.Add(feed);
+    await db.SaveChangesAsync();
+    return Results.Ok(feed);
+});
+
+// API: Delete a social feed
+app.MapDelete("/api/guilds/{id}/feeds/{feedId}", async (string id, int feedId, BotContext db) =>
+{
+    if (!ulong.TryParse(id, out var guildId)) return Results.BadRequest();
+    var feed = await db.SocialFeeds.FirstOrDefaultAsync(f => f.Id == feedId && f.GuildId == guildId);
+    if (feed == null) return Results.NotFound();
+
+    db.SocialFeeds.Remove(feed);
+    await db.SaveChangesAsync();
+    return Results.NoContent();
+});
+
+// API: Get guild analytics (Messages over last 7 days)
+app.MapGet("/api/guilds/{id}/analytics", async (string id, BotContext db) =>
+{
+    if (!ulong.TryParse(id, out var guildId)) return Results.BadRequest();
+    
+    var last7Days = Enumerable.Range(0, 7)
+        .Select(i => DateTime.UtcNow.Date.AddDays(-i))
+        .Reverse()
+        .ToList();
+
+    var stats = await db.MessageLogs
+        .Where(l => l.GuildId == guildId && l.Timestamp >= last7Days[0])
+        .GroupBy(l => l.Timestamp.Date)
+        .Select(g => new { Date = g.Key, Count = g.Count() })
+        .ToListAsync();
+
+    var results = last7Days.Select(date => new {
+        label = date.ToString("ddd"),
+        count = stats.FirstOrDefault(s => s.Date == date)?.Count ?? 0
+    });
+
+    return Results.Ok(results);
+});
+
+// API: Get recent bot activity
+app.MapGet("/api/guilds/{id}/activity", async (string id, BotContext db) =>
+{
+    if (!ulong.TryParse(id, out var guildId)) return Results.BadRequest();
+    
+    // Pull last 5 messages from records as a "Live Feed" proxy
+    var activity = await db.MessageRecords
+        .Where(m => m.GuildId == guildId)
+        .OrderByDescending(m => m.Timestamp)
+        .Take(5)
+        .Select(m => new { m.Username, m.Content, m.Timestamp })
+        .ToListAsync();
+
+    return Results.Ok(activity);
 });
 
 app.MapGet("/api/stats", (Scrappy.Services.SystemMonitorService sys, BotService bot) =>

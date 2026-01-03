@@ -2,246 +2,260 @@
 <html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SCRAPPY | Dashboard</title>
-    
-    <!-- Design System -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+    <title>SCRAPPY | Command Center</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
-    
     <script>
         tailwind.config = {
             darkMode: 'class',
             theme: {
                 extend: {
-                    colors: {
-                        primary: '#6366f1',
-                        dark: '#0a0a0a',
-                        surface: '#121212',
-                        'surface-light': '#1e1e1e'
-                    },
-                    fontFamily: {
-                        sans: ['Plus Jakarta Sans', 'sans-serif'],
-                    }
+                    colors: { primary: '#6366f1', dark: '#050505', surface: '#111111', 'surface-light': '#1a1a1a' },
+                    fontFamily: { sans: ['Plus Jakarta Sans', 'sans-serif'] }
                 }
             }
         }
     </script>
-
     <style>
-        body { background-color: #0a0a0a; color: white; -webkit-tap-highlight-color: transparent; }
-        .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.05); }
-        .hide-scroll::-webkit-scrollbar { display: none; }
-        .nav-active { color: #6366f1; background: rgba(99, 102, 241, 0.1); }
+        :root { --app-height: 100dvh; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body { background-color: #050505; color: white; overflow: hidden; position: fixed; width: 100%; height: var(--app-height); padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0; }
+        .view-layer { position: absolute; inset: 0; width: 100%; height: 100%; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding-bottom: 120px; }
+        #drawer-layer { z-index: 80; position: fixed; bottom: 0; left: 0; right: 0; height: var(--app-height); background: rgba(5, 5, 5, 0.98); backdrop-filter: blur(30px); transition: transform 0.5s cubic-bezier(0.32, 0.72, 0, 1); transform: translateY(calc(100% - 80px)); border-top: 1px solid rgba(255,255,255,0.05); }
+        #drawer-layer.open { transform: translateY(0); }
+        input, select, textarea { font-size: 16px !important; }
+        #module-layer { z-index: 100; background: #050505; display: none; }
+        #module-layer.active { display: flex; flex-direction: column; }
+        .module-card { aspect-ratio: 1/1; transition: transform 0.2s ease; cursor: pointer; }
+        .module-card:active { transform: scale(0.95); }
+        .custom-scroll::-webkit-scrollbar { width: 4px; }
+        .custom-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+        .animate-up { animation: slideUp 0.3s ease-out; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        .cyber-toggle-wrapper { display: flex; align-items: center; gap: 12px; }
+        .cyber-toggle-checkbox { display: none; }
+        .cyber-toggle { position: relative; width: 52px; height: 28px; cursor: pointer; display: block; }
+        .cyber-toggle-track { position: absolute; inset: 0; background: #1a1a1a; border-radius: 30px; border: 1px solid rgba(255,255,255,0.1); transition: 0.4s; overflow: hidden; }
+        .cyber-toggle-track-glow { position: absolute; inset: 0; background: linear-gradient(90deg, #6366f1, #a855f7); opacity: 0; transition: 0.4s; }
+        .cyber-toggle-checkbox:checked + .cyber-toggle .cyber-toggle-track-glow { opacity: 0.4; }
+        .cyber-toggle-thumb { position: absolute; top: 3px; left: 3px; width: 22px; height: 22px; background: #fff; border-radius: 50%; transition: 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55); z-index: 2; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
+        .cyber-toggle-checkbox:checked + .cyber-toggle .cyber-toggle-thumb { transform: translateX(24px); background: #6366f1; box-shadow: 0 0 15px #6366f1; }
+        .cyber-toggle-labels { display: flex; flex-direction: column; line-height: 1; font-size: 8px; font-weight: 900; color: #333; }
+        .cyber-toggle-checkbox:checked ~ .cyber-toggle-labels .cyber-toggle-label-on { color: #6366f1; }
+        .cyber-toggle-checkbox:not(:checked) ~ .cyber-toggle-labels .cyber-toggle-label-off { color: #ef4444; }
     </style>
 </head>
 <body class="font-sans antialiased">
+    <div id="loading" class="fixed inset-0 z-[200] bg-dark flex items-center justify-center transition-all"><div class="w-10 h-10 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div></div>
 
-    <!-- Loading Overlay -->
-    <div id="loading" class="fixed inset-0 z-[100] bg-dark flex items-center justify-center transition-opacity duration-500">
-        <div class="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+    <div id="exit-modal" class="fixed inset-0 z-[300] bg-dark/95 backdrop-blur-xl hidden flex-col items-center justify-center p-10 animate-up text-center">
+        <span class="material-icons-round text-5xl text-yellow-500 mb-6">warning_amber</span>
+        <h3 class="text-2xl font-bold tracking-tight mb-2">Unsaved Changes</h3>
+        <p class="text-gray-500 font-medium mb-10 text-sm leading-relaxed">Save your edits before leaving?</p>
+        <div class="w-full flex flex-col gap-3 max-w-xs">
+            <button onclick="saveAndExit()" class="py-4 bg-primary text-white rounded-2xl font-bold shadow-lg">Save & Exit</button>
+            <button onclick="discardAndExit()" class="py-4 bg-white/5 text-red-400 font-bold rounded-2xl">Discard Edits</button>
+            <button onclick="toggleExitModal(false)" class="py-2 text-xs font-bold uppercase tracking-widest text-gray-600">Cancel</button>
+        </div>
     </div>
 
-    <div class="flex flex-col md:flex-row min-h-screen">
-        
-        <!-- Sidebar (Desktop) -->
-        <aside class="hidden md:flex w-72 flex-col fixed inset-y-0 bg-dark border-r border-white/5 p-6 space-y-8">
-            <div class="flex items-center gap-3 px-2">
-                <div class="w-10 h-10 rounded-2xl bg-primary flex items-center justify-center shadow-lg shadow-primary/20">
-                    <span class="material-icons-round text-white">bolt</span>
+    <div class="relative h-full w-full overflow-hidden">
+        <div id="analytics-layer" class="view-layer p-6">
+            <header class="flex items-center justify-between mb-8 mt-2">
+                <div class="flex items-center gap-3">
+                    <img id="guild-icon" src="" class="w-11 h-11 rounded-xl bg-surface border border-white/10 shadow-lg object-cover">
+                    <div><h2 id="guild-name" class="font-bold text-lg tracking-tight leading-tight">--</h2><span class="text-[9px] font-bold text-primary uppercase tracking-widest leading-none">Management Hub</span></div>
                 </div>
-                <span class="font-extrabold text-2xl tracking-tighter italic">SCRAPPY</span>
-            </div>
+                <img id="user-avatar" src="" class="w-10 h-10 rounded-full border border-white/10 active:scale-90 transition-transform" onclick="location.href='/logout'">
+            </header>
+            <div class="space-y-5 animate-up">
+                <div class="grid grid-cols-2 gap-4">
+                    <div class="bg-surface p-6 rounded-3xl border border-white/5"><p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Members</p><div id="stat-members" class="text-2xl font-bold tracking-tight">--</div></div>
+                    <div onclick="showServerSelector()" class="bg-surface p-6 rounded-3xl border border-white/5 active:bg-white/5"><p class="text-[10px] font-bold text-primary uppercase tracking-widest mb-1 underline">Online Now</p><div id="stat-online" class="text-2xl font-bold tracking-tight text-green-500">--</div></div>
+                </div>
 
-            <nav class="flex-1 space-y-1">
-                <p class="text-[10px] font-bold text-gray-500 uppercase tracking-[0.2em] px-4 mb-4">Management</p>
-                <button onclick="showPage('overview')" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all hover:bg-white/5 nav-item" id="nav-overview">
-                    <span class="material-icons-round">grid_view</span> Overview
-                </button>
-                <button onclick="showPage('moderation')" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all hover:bg-white/5 nav-item" id="nav-moderation">
-                    <span class="material-icons-round">gavel</span> Moderation
-                </button>
-                <button onclick="showPage('settings')" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl font-bold transition-all hover:bg-white/5 nav-item" id="nav-settings">
-                    <span class="material-icons-round">settings</span> Settings
-                </button>
-            </nav>
-
-            <div class="pt-4 border-t border-white/5">
-                <button onclick="location.href='/logout'" class="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-400/10 rounded-2xl font-bold transition-all">
-                    <span class="material-icons-round">logout</span> Sign Out
-                </button>
-            </div>
-        </aside>
-
-        <!-- Main Content Area -->
-        <main class="flex-1 md:ml-72 flex flex-col min-h-screen">
-            
-            <!-- Top Bar -->
-            <header class="h-20 border-b border-white/5 px-6 flex items-center justify-between sticky top-0 bg-dark/80 backdrop-blur-md z-40">
-                <div class="flex items-center gap-4">
-                    <div id="server-selector-trigger" class="flex items-center gap-3 cursor-pointer p-2 rounded-2xl hover:bg-white/5 transition-all">
-                        <img id="guild-icon" src="" class="w-10 h-10 rounded-xl bg-surface-light border border-white/10 shadow-lg">
-                        <div class="flex flex-col">
-                            <h2 id="guild-name" class="font-bold text-sm leading-tight">Loading Server...</h2>
-                            <span class="text-[10px] font-black text-primary uppercase tracking-widest leading-none mt-1">Administrator</span>
-                        </div>
-                        <span class="material-icons-round text-gray-500 ml-2">expand_more</span>
+                <!-- REAL ACTIVITY CHART -->
+                <div class="bg-surface p-6 rounded-[2rem] border border-white/5 relative">
+                    <div class="flex items-center justify-between mb-6 px-2">
+                        <h3 class="font-bold text-sm tracking-tight italic">Activity Pulse</h3>
+                        <span class="text-[8px] font-black text-gray-500 uppercase tracking-widest">Last 7 Days</span>
+                    </div>
+                    <div class="h-40 w-full">
+                        <canvas id="activityChart"></canvas>
                     </div>
                 </div>
-            </header>
 
-            <!-- Page Container -->
-            <div id="content" class="p-6 sm:p-10 flex-1 pb-32">
-                <!-- Content will be injected here via JS -->
+                <!-- LIVE ACTIVITY CONSOLE -->
+                <div class="bg-surface p-6 rounded-[2rem] border border-white/5">
+                    <div class="flex items-center gap-2 mb-4 px-2">
+                        <span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+                        <h3 class="font-bold text-[10px] uppercase tracking-widest text-gray-500">Live Activity Feed</h3>
+                    </div>
+                    <div id="activity-feed" class="space-y-3">
+                        <!-- Activity items injected here -->
+                    </div>
+                </div>
+
+                <div class="glass p-5 rounded-2xl flex items-center justify-between"><div><p class="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-0.5">Core Latency</p><p id="stat-latency" class="font-semibold text-sm text-primary">-- ms</p></div><span class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span></div>
             </div>
-        </main>
+        </div>
 
-        <!-- Mobile Nav -->
-        <nav class="md:hidden fixed bottom-6 left-6 right-6 h-20 bg-dark/90 backdrop-blur-xl border border-white/10 rounded-[2.5rem] shadow-2xl z-50 flex items-center justify-around px-4">
-            <button onclick="showPage('overview')" class="flex flex-col items-center gap-1 nav-item" id="nav-mobile-overview">
-                <span class="material-icons-round text-2xl">grid_view</span>
-                <span class="text-[8px] font-black uppercase">Home</span>
-            </button>
-            <button onclick="showPage('moderation')" class="flex flex-col items-center gap-1 nav-item" id="nav-mobile-moderation">
-                <span class="material-icons-round text-2xl">gavel</span>
-                <span class="text-[8px] font-black uppercase">Mod</span>
-            </button>
-            <button onclick="showPage('settings')" class="flex flex-col items-center gap-1 nav-item" id="nav-mobile-settings">
-                <span class="material-icons-round text-2xl">settings</span>
-                <span class="text-[8px] font-black uppercase">Set</span>
-            </button>
-        </nav>
+        <div id="drawer-layer">
+            <div onclick="toggleDrawer()" class="h-20 flex flex-col items-center justify-center cursor-pointer border-t border-white/5 active:bg-white/5">
+                <div class="w-12 h-1 bg-white/10 rounded-full mb-3"></div>
+                <div class="flex items-center gap-2"><span class="material-icons-round text-primary text-sm">widgets</span><span class="text-[10px] font-bold uppercase tracking-[0.2em] text-gray-400">Features Drawer</span></div>
+            </div>
+            <div class="flex-1 overflow-y-auto p-8 custom-scroll"><div class="grid grid-cols-3 gap-6" id="module-grid"></div><div class="h-24"></div></div>
+        </div>
+
+        <div id="module-layer" class="view-layer p-0">
+            <header class="p-6 flex items-center gap-5 border-b border-white/5 sticky top-0 bg-dark z-10">
+                <button onclick="handleExitAttempt()" class="w-11 h-11 bg-surface rounded-xl border border-white/10 flex items-center justify-center active:scale-90"><span class="material-icons-round text-xl text-gray-400">arrow_back</span></button>
+                <div><h2 id="module-title" class="font-bold text-xl tracking-tight leading-none mb-1">Module</h2><span class="text-[9px] font-bold text-primary uppercase tracking-widest leading-none">Settings</span></div>
+            </header>
+            <div id="module-content" class="p-6 space-y-6 pb-40"></div>
+            <div id="module-footer" class="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-dark via-dark to-transparent"><button onclick="saveModuleSettings()" class="w-full py-4 bg-primary text-white rounded-2xl font-bold text-lg shadow-xl shadow-primary/30 active:scale-95">Save Changes</button></div>
+        </div>
     </div>
 
-    <!-- JavaScript logic -->
+    <!-- Server Selector -->
+    <div id="server-modal" class="fixed inset-0 z-[250] bg-dark hidden flex-col p-6 animate-up"><div class="flex items-center justify-between mb-8 mt-2"><h2 class="text-2xl font-bold tracking-tight">Your Hubs</h2><button onclick="hideServerSelector()" class="w-11 h-11 bg-white/5 rounded-xl flex items-center justify-center"><span class="material-icons-round">close</span></button></div><div id="server-list" class="space-y-3 overflow-y-auto flex-1 custom-scroll pr-2"></div></div>
+
     <script>
-        let currentGuildId = null;
-        let guildData = null;
+        const MODULES = [
+            { id: 'wordFilter', name: 'Word Filter', icon: 'security', color: 'text-red-500', settings: ['wordFilterEnabled', 'bannedWords'], desc: 'Auto-delete prohibited words.' },
+            { id: 'modLogs', name: 'Mod Logs', icon: 'history_edu', color: 'text-orange-500', settings: ['modLogEnabled', 'modLogChannelId'], desc: 'Track server actions, edits, and deletions.' },
+            { id: 'autoPunish', name: 'Auto Punish', icon: 'gavel', color: 'text-red-400', settings: ['autoPunishEnabled', 'warnLimitBeforeTimeout', 'warnTimeoutDuration'], desc: 'Configure automatic timeout punishments.' },
+            { id: 'welcome', name: 'Welcome', icon: 'login', color: 'text-green-500', settings: ['welcomeEnabled', 'welcomeChannelId', 'welcomeMessage'], desc: 'Greet new server members.' },
+            { id: 'goodbye', name: 'Goodbye', icon: 'logout', color: 'text-yellow-500', settings: ['goodbyeEnabled', 'goodbyeChannelId', 'goodbyeMessage'], desc: 'Track server departures.' },
+            { id: 'autoRole', name: 'Auto Role', icon: 'person_add', color: 'text-blue-400', settings: ['autoRoleEnabled', 'autoRoleId'], desc: 'Assign roles automatically on join.' },
+            { id: 'feeds', name: 'RSS Feeds', icon: 'rss_feed', color: 'text-blue-500', settings: ['socialFeedsEnabled'], desc: 'YouTube and RSS notifications.' },
+            { id: 'freeGames', name: 'Free Games', icon: 'sports_esports', color: 'text-teal-400', settings: ['freeGamesEnabled', 'freeGamesChannelId'], desc: 'Announce new game giveaways.' },
+            { id: 'analytics', name: 'Analytics', icon: 'insights', color: 'text-purple-400', settings: ['analyticsEnabled', 'messageLoggingEnabled'], desc: 'Activity and voice duration logs.' },
+            { id: 'utility', name: 'Utility', icon: 'build', color: 'text-gray-400', settings: ['pollsEnabled', 'remindersEnabled', 'sayHelloEnabled'], desc: 'General server tools.' }
+        ];
+
+        const VARS = [{k:'{user}',l:'User'},{k:'{username}',l:'Name'},{k:'{server}',l:'Server'},{k:'{count}',l:'Count'},{k:'{owner}',l:'Owner'},{k:'{date}',l:'Date'}];
+
+        let currentGuildId = null, guildData = null, allGuilds = [], activeModuleId = null, originalSettings = {}, guildChannels = [], guildRoles = [], activeChart = null;
 
         async function init() {
             try {
-                // Get the first guild automatically for now
-                const response = await fetch('/api/guilds');
-                const guilds = await response.json();
-                if (guilds.length > 0) {
-                    await selectGuild(guilds[0].id);
-                }
-            } catch (err) {
-                console.error("Failed to load dashboard data", err);
-            } finally {
-                document.getElementById('loading').style.opacity = '0';
-                setTimeout(() => document.getElementById('loading').style.display = 'none', 500);
-            }
+                const userRes = await fetch('/api/user');
+                if (!userRes.ok) { location.href = '/login'; return; }
+                const user = await userRes.json();
+                document.getElementById('user-avatar').src = user.avatarUrl || 'https://cdn.discordapp.com/embed/avatars/0.png';
+                const guildsRes = await fetch('/api/guilds');
+                if (guildsRes.status === 503) { setTimeout(init, 2000); return; }
+                allGuilds = await guildsRes.json();
+                if (allGuilds.length > 0) await selectGuild(allGuilds[0].id);
+            } catch (err) { console.error(err); }
+            finally { document.getElementById('loading').style.display = 'none'; }
         }
 
         async function selectGuild(id) {
-            currentGuildId = id;
-            const res = await fetch(`/api/guilds/${id}`);
-            const data = await res.json();
-            guildData = data;
-            
-            document.getElementById('guild-name').innerText = data.guild.name;
-            document.getElementById('guild-icon').src = data.guild.iconUrl;
-            
-            showPage('overview');
+            currentGuildId = id; hideServerSelector(); showLoading();
+            try {
+                const [gRes, cRes, rRes, sRes, aRes, acRes] = await Promise.all([
+                    fetch(`/api/guilds/${id}`), fetch(`/api/guilds/${id}/channels`), fetch(`/api/guilds/${id}/roles`), fetch('/api/stats'), fetch(`/api/guilds/${id}/analytics`), fetch(`/api/guilds/${id}/activity`)
+                ]);
+                guildData = await gRes.json(); guildChannels = await cRes.json(); guildRoles = await rRes.json();
+                const stats = await sRes.json(), analytics = await aRes.json(), activity = await acRes.json();
+
+                document.getElementById('guild-name').innerText = guildData.guild.name;
+                document.getElementById('guild-icon').src = guildData.guild.iconUrl;
+                document.getElementById('stat-members').innerText = guildData.guild.memberCount;
+                document.getElementById('stat-online').innerText = guildData.guild.onlineCount;
+                document.getElementById('stat-latency').innerText = stats.bot.latency + ' ms';
+                
+                renderActivityChart(analytics);
+                renderActivityFeed(activity);
+                renderModuleGrid();
+            } finally { hideLoading(); }
         }
 
-        function showPage(page) {
-            const content = document.getElementById('content');
-            
-            // Update Active Nav
-            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('nav-active'));
-            document.getElementById(`nav-${page}`)?.classList.add('nav-active');
-            document.getElementById(`nav-mobile-${page}`)?.classList.add('nav-active');
-
-            if (page === 'overview') {
-                content.innerHTML = `
-                    <div class="animate-in fade-in duration-500">
-                        <div class="mb-10">
-                            <h1 class="text-4xl font-extrabold tracking-tighter mb-2">Dashboard Overview</h1>
-                            <p class="text-gray-500 font-medium">Monitoring ${guildData.guild.name} in real-time.</p>
-                        </div>
-                        
-                        <div class="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-                            <div class="bg-surface border border-white/5 p-6 rounded-[2.5rem]">
-                                <span class="text-[10px] font-black uppercase text-gray-500 tracking-widest block mb-2">Members</span>
-                                <div class="text-4xl font-black">${guildData.guild.memberCount}</div>
-                                <div class="text-xs font-bold text-green-500 mt-2">Active Population</div>
-                            </div>
-                            <div class="bg-surface border border-white/5 p-6 rounded-[2.5rem]">
-                                <span class="text-[10px] font-black uppercase text-gray-500 tracking-widest block mb-2">Bots</span>
-                                <div class="text-4xl font-black">${guildData.guild.botCount}</div>
-                                <div class="text-xs font-bold text-primary mt-2">AI Agents</div>
-                            </div>
-                            <div class="bg-surface border border-white/5 p-6 rounded-[2.5rem]">
-                                <span class="text-[10px] font-black uppercase text-gray-500 tracking-widest block mb-2">Premium</span>
-                                <div class="text-4xl font-black">Tier ${guildData.guild.premiumTier}</div>
-                                <div class="text-xs font-bold text-pink-500 mt-2">Server Boost Level</div>
-                            </div>
-                            <div class="bg-surface border border-white/5 p-6 rounded-[2.5rem]">
-                                <span class="text-[10px] font-black uppercase text-gray-500 tracking-widest block mb-2">Online</span>
-                                <div class="text-4xl font-black">${guildData.guild.onlineCount}</div>
-                                <div class="text-xs font-bold text-blue-500 mt-2">Currently Presence</div>
-                            </div>
-                        </div>
-
-                        <div class="bg-surface border border-white/5 p-8 rounded-[3rem] flex flex-col lg:flex-row items-center gap-10">
-                            <div class="relative">
-                                <img src="${guildData.guild.iconUrl}" class="w-32 h-32 rounded-[2.5rem] relative z-10 shadow-2xl shadow-primary/20">
-                                <div class="absolute inset-0 bg-primary/20 blur-3xl rounded-full scale-150"></div>
-                            </div>
-                            <div class="flex-1 text-center lg:text-left">
-                                <h2 class="text-3xl font-black mb-2">${guildData.guild.name}</h2>
-                                <p class="text-gray-400 font-bold mb-6">Owner: <span class="text-white">${guildData.guild.ownerName}</span></p>
-                                <div class="flex flex-wrap justify-center lg:justify-start gap-4 text-xs font-bold uppercase tracking-widest text-gray-500">
-                                    <div class="px-4 py-2 bg-white/5 rounded-full">ID: ${guildData.guild.id}</div>
-                                    <div class="px-4 py-2 bg-white/5 rounded-full">${guildData.guild.verificationLevel} Verification</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            } else if (page === 'settings') {
-                content.innerHTML = `
-                    <div class="animate-in fade-in duration-500 max-w-2xl mx-auto">
-                        <div class="mb-10 text-center">
-                            <h1 class="text-4xl font-extrabold tracking-tighter mb-2">Global Settings</h1>
-                            <p class="text-gray-500 font-medium">Configure Scrappy's behavior for this server.</p>
-                        </div>
-
-                        <div class="space-y-4">
-                            <div class="bg-surface border border-white/5 p-6 rounded-[2rem] flex items-center justify-between group hover:border-primary/30 transition-all">
-                                <div>
-                                    <h3 class="font-bold text-lg">Analytics Tracking</h3>
-                                    <p class="text-xs text-gray-500">Track server activity and messages.</p>
-                                </div>
-                                <div class="w-12 h-6 bg-primary rounded-full relative flex items-center px-1">
-                                    <div class="w-4 h-4 bg-white rounded-full ml-auto shadow-md"></div>
-                                </div>
-                            </div>
-
-                            <div class="bg-surface border border-white/5 p-6 rounded-[2rem] flex items-center justify-between group hover:border-primary/30 transition-all">
-                                <div>
-                                    <h3 class="font-bold text-lg">Welcome Messages</h3>
-                                    <p class="text-xs text-gray-500">Announce new members when they join.</p>
-                                </div>
-                                <div class="w-12 h-6 bg-white/10 rounded-full relative flex items-center px-1">
-                                    <div class="w-4 h-4 bg-gray-500 rounded-full shadow-md"></div>
-                                </div>
-                            </div>
-
-                            <div class="pt-10 flex justify-center">
-                                <button class="px-12 py-5 bg-primary rounded-[1.5rem] font-black text-lg shadow-2xl shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
-                                    Save Configuration
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
+        function renderActivityChart(data) {
+            if (activeChart) activeChart.destroy();
+            const ctx = document.getElementById('activityChart').getContext('2d');
+            activeChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: data.map(d => d.label),
+                    datasets: [{
+                        label: 'Messages',
+                        data: data.map(d => d.count),
+                        borderColor: '#6366f1',
+                        backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 3,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { display: false, beginAtZero: true },
+                        x: { grid: { display: false }, border: { display: false }, ticks: { color: '#444', font: { size: 9, weight: 'bold' } } }
+                    }
+                }
+            });
         }
 
+        function renderActivityFeed(data) {
+            const feed = document.getElementById('activity-feed');
+            if (data.length === 0) { feed.innerHTML = '<p class="text-center py-4 text-xs font-bold text-gray-700 italic">No recent activity...</p>'; return; }
+            feed.innerHTML = data.map(a => `
+                <div class="flex items-start gap-3 p-3 bg-white/[0.02] rounded-xl border border-white/5">
+                    <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center text-primary font-black text-[10px]">${a.username[0].toUpperCase()}</div>
+                    <div class="min-w-0">
+                        <p class="text-[10px] font-bold leading-none mb-1 text-gray-300">@${a.username}</p>
+                        <p class="text-xs text-gray-500 truncate leading-tight">${a.content || 'Sent an attachment'}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function getSetting(key) { const pascal = key.charAt(0).toUpperCase() + key.slice(1); return guildData.settings[key] !== undefined ? guildData.settings[key] : (guildData.settings[pascal] !== undefined ? guildData.settings[pascal] : null); }
+        function renderModuleGrid() { document.getElementById('module-grid').innerHTML = MODULES.map(m => `<div onclick="enterModule('${m.id}')" class="module-card flex flex-col items-center gap-3"><div class="w-full aspect-square bg-surface border border-white/5 rounded-3xl flex items-center justify-center shadow-xl relative overflow-hidden"><span class="material-icons-round text-3xl ${m.color}">${m.icon}</span><div id="dot-${m.id}" class="absolute top-3.5 right-3.5 w-2 h-2 rounded-full bg-gray-800 transition-colors"></div></div><span class="text-[9px] font-bold uppercase tracking-widest text-center text-gray-500 leading-tight">${m.name}</span></div>`).join(''); updateModuleDots(); }
+        function updateModuleDots() { MODULES.forEach(m => { const dot = document.getElementById(`dot-${m.id}`); if (!dot) return; const isEnabled = getSetting(m.settings[0]) === true; dot.className = `absolute top-3.5 right-3.5 w-2 h-2 rounded-full ${isEnabled ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.5)]' : 'bg-gray-800'}`; }); }
+        function toggleDrawer(isOpen = null) { const el = document.getElementById('drawer-layer'); if (isOpen === true) { el.classList.add('open'); history.pushState({view: 'drawer'}, ''); } else if (isOpen === false) el.classList.remove('open'); else { const opening = !el.classList.contains('open'); el.classList.toggle('open'); if (opening) history.pushState({view: 'drawer'}, ''); else history.back(); } }
+        function enterModule(id) { activeModuleId = id; const m = MODULES.find(x => x.id === id); originalSettings = {}; m.settings.forEach(s => originalSettings[s] = getSetting(s)); document.getElementById('module-title').innerText = m.name; const container = document.getElementById('module-content'); if (id === 'feeds') { renderRSSManager(); document.getElementById('module-footer').style.display = 'none'; } else { container.innerHTML = `<div class="animate-up space-y-6"><div class="bg-surface p-6 rounded-2xl border border-white/5"><p class="text-[9px] font-bold uppercase text-primary mb-1 tracking-widest">Information</p><p class="text-sm font-medium text-gray-400 leading-relaxed">${m.desc}</p></div>${m.settings.map(s => renderSettingInput(s, getSetting(s))).join('')}</div>`; document.getElementById('module-footer').style.display = 'block'; } document.getElementById('module-layer').classList.add('active'); history.pushState({view: 'module'}, ''); if (document.getElementById('drawer-layer').classList.contains('open')) document.getElementById('drawer-layer').classList.remove('open'); if (id === 'wordFilter') drawTags('bannedWords'); }
+        async function renderRSSManager() { const container = document.getElementById('module-content'); container.innerHTML = `<div class="w-10 h-10 border-2 border-primary/20 border-t-primary rounded-full animate-spin mx-auto mt-20"></div>`; const res = await fetch(`/api/guilds/${currentGuildId}/feeds`); const feeds = await res.json(); container.innerHTML = `<div class="animate-up space-y-8"><div class="bg-surface p-8 rounded-3xl border border-white/5"><p class="font-bold text-[10px] uppercase tracking-widest text-primary mb-6">Add New Feed</p><div class="space-y-4"><input type="text" id="feed-name" placeholder="Feed Name" class="w-full bg-white/[0.03] border border-white/5 rounded-2xl p-5 text-base font-bold focus:border-primary outline-none"><input type="text" id="feed-url" placeholder="RSS/YouTube URL" class="w-full bg-white/[0.03] border border-white/5 rounded-2xl p-5 text-base font-bold focus:border-primary outline-none"><select id="feed-channel" class="w-full bg-white/[0.03] border border-white/5 rounded-2xl p-5 text-base font-bold focus:border-primary outline-none appearance-none"><option value="">Select Channel</option>${guildChannels.map(c => `<option value="${c.id}"># ${c.name}</option>`).join('')}</select><button onclick="addFeed()" class="w-full py-4 bg-primary text-white rounded-2xl font-bold active:scale-95 transition-all">Add Social Feed</button></div></div><div class="space-y-4"><p class="font-bold text-[10px] uppercase tracking-widest text-gray-500 px-2">Active Feeds (${feeds.length})</p>${feeds.length === 0 ? '<p class="text-center py-10 text-gray-600 font-bold italic">No active feeds...</p>' : feeds.map(f => `<div class="bg-surface p-6 rounded-3xl border border-white/5 flex items-center justify-between group"><div class="min-w-0"><p class="font-bold text-lg leading-none mb-1 truncate">${f.name}</p><p class="text-[10px] font-bold text-gray-500 truncate opacity-60 mb-2">${f.url}</p><span class="px-2 py-0.5 bg-primary/10 text-primary text-[8px] font-bold rounded-md border border-primary/20 uppercase tracking-widest"># ${guildChannels.find(c => c.id == f.channelId)?.name || 'Unknown'}</span></div><button onclick="deleteFeed(${f.id})" class="w-12 h-12 bg-red-500/10 text-red-500 rounded-2xl flex items-center justify-center hover:bg-red-500 hover:text-white transition-all"><span class="material-icons-round">delete</span></button></div>`).join('')}</div></div>`; }
+        async function addFeed() { const name = document.getElementById('feed-name').value, url = document.getElementById('feed-url').value, channelId = document.getElementById('feed-channel').value; if (!name || !url || !channelId) return alert("Fill all fields!"); const res = await fetch(`/api/guilds/${currentGuildId}/feeds`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ Name: name, Url: url, ChannelId: channelId }) }); if (res.ok) renderRSSManager(); }
+        async function deleteFeed(feedId) { if (!confirm("Remove this social feed?")) return; const res = await fetch(`/api/guilds/${currentGuildId}/feeds/${feedId}`, { method: 'DELETE' }); if (res.ok) renderRSSManager(); }
+        window.onpopstate = function(event) { if (document.getElementById('exit-modal').style.display === 'flex') { toggleExitModal(false); return; } if (document.getElementById('server-modal').style.display === 'flex') { hideServerSelector(); return; } if (document.getElementById('module-layer').classList.contains('active')) { exitModule(); return; } if (document.getElementById('drawer-layer').classList.contains('open')) { document.getElementById('drawer-layer').classList.remove('open'); return; } };
+        function renderSettingInput(key, val) {
+            const label = key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase()).trim();
+            const isBool = typeof val === 'boolean' || key.toLowerCase().endsWith('enabled');
+            if (isBool) return `<div class="bg-surface p-6 rounded-2xl border border-white/5 flex items-center justify-between group"><div><p class="font-bold text-base tracking-tight">${label}</p><p class="text-[9px] font-bold text-gray-500 uppercase tracking-widest mt-0.5">Feature Toggle</p></div><div class="cyber-toggle-wrapper"><input class="cyber-toggle-checkbox" id="set-${key}" type="checkbox" ${val ? 'checked' : ''} /><label class="cyber-toggle" for="set-${key}"><div class="cyber-toggle-track"><div class="cyber-toggle-track-glow"></div></div><div class="cyber-toggle-thumb"></div></label><div class="cyber-toggle-labels"><span class="cyber-toggle-label-off">OFF</span><span class="cyber-toggle-label-on">ON</span></div></div></div>`;
+            if (key === 'bannedWords') return `<div class="bg-surface p-6 rounded-3xl border border-white/5"><p class="font-bold text-[10px] uppercase tracking-widest text-gray-500 mb-4">${label}</p><div id="tag-container-${key}" class="flex flex-wrap gap-2 mb-4"></div><div class="flex gap-2"><input type="text" id="tag-input-${key}" onkeydown="handleTagInput(event, '${key}')" placeholder="Type word..." class="flex-1 bg-white/[0.03] border border-white/5 rounded-xl p-4 text-base font-bold focus:border-primary outline-none"><button onclick="addTagFromInput('${key}')" class="w-14 h-14 bg-primary text-white rounded-xl flex items-center justify-center shadow-lg active:scale-90 transition-all"><span class="material-icons-round">add</span></button></div><button onclick="clearAllTags('${key}')" class="mt-4 text-[9px] font-black text-red-500/50 uppercase tracking-widest hover:text-red-500 transition-colors">Clear All Words</button><input type="hidden" id="set-${key}" value="${val || ''}"></div>`;
+            if (key.toLowerCase().includes('message')) { setTimeout(() => updatePreview(key), 100); return `<div class="bg-surface p-6 rounded-3xl border border-white/5"><p class="font-black text-[10px] uppercase tracking-widest text-gray-500 mb-4">${label}</p><textarea id="set-${key}" oninput="updatePreview('${key}')" class="w-full bg-white/[0.03] border border-white/5 rounded-2xl p-5 text-base font-medium focus:border-primary outline-none min-h-[150px] resize-none custom-scroll mb-4">${val || ''}</textarea><div class="flex flex-wrap gap-1.5 mb-6">${VARS.map(v => `<button onclick="insertVar('set-${key}', '${v.k}')" class="px-2.5 py-1.5 bg-white/5 text-gray-400 text-[10px] font-bold rounded-lg border border-white/5 active:bg-primary active:text-white transition-all">${v.l}</button>`).join('')}</div><div class="p-4 bg-white/[0.02] border border-white/5 rounded-2xl"><p class="text-[8px] font-bold text-gray-600 uppercase tracking-widest mb-2 leading-none italic">Preview Result</p><p id="preview-${key}" class="text-sm font-medium text-gray-400 leading-snug">--</p></div></div>`; }
+            if (key.toLowerCase().includes('id')) { const list = key.toLowerCase().includes('role') ? guildRoles : guildChannels; return `<div class="bg-surface p-6 rounded-3xl border border-white/5"><p class="font-bold text-[10px] uppercase tracking-widest text-gray-500 mb-4">${label}</p><select id="set-${key}" class="w-full bg-white/[0.03] border border-white/5 rounded-2xl p-5 text-base font-bold focus:border-primary outline-none appearance-none"><option value="">None Selected</option>${list.map(i => `<option value="${i.id}" ${val == i.id ? 'selected' : ''}># ${i.name}</option>`).join('')}</select></div>`; }
+            return `<div class="bg-surface p-6 rounded-3xl border border-white/5"><p class="font-bold text-[10px] uppercase tracking-widest text-gray-500 mb-4">${label}</p><input type="text" id="set-${key}" value="${val || ''}" class="w-full bg-white/[0.03] border border-white/5 rounded-2xl p-5 text-base font-bold focus:border-primary outline-none"></div>`;
+        }
+        function handleTagInput(e, key) { if (e.key === 'Enter') { e.preventDefault(); addTagFromInput(key); } }
+        function addTagFromInput(key) { const input = document.getElementById(`tag-input-${key}`), val = input.value.trim(); if (val) { const hidden = document.getElementById(`set-${key}`); let words = hidden.value ? hidden.value.split(',').map(w => w.trim()) : []; if (!words.includes(val)) { words.push(val); hidden.value = words.join(','); drawTags(key); } input.value = ''; } }
+        function clearAllTags(key) { if (confirm("Clear all prohibited words?")) { document.getElementById(`set-${key}`).value = ''; drawTags(key); } }
+        function drawTags(key) { const hidden = document.getElementById(`set-${key}`), container = document.getElementById(`tag-container-${key}`); if (!hidden || !container) return; const words = hidden.value ? hidden.value.split(',').filter(w => w.trim()) : []; container.innerHTML = words.map(w => `<div class="bg-primary/10 text-primary border border-primary/20 px-3 py-1.5 rounded-xl flex items-center gap-2 animate-up"><span class="font-bold text-sm">${w}</span><button onclick="removeTag('${key}', '${w}')"><span class="material-icons-round text-sm">close</span></button></div>`).join(''); }
+        function removeTag(key, word) { const hidden = document.getElementById(`set-${key}`); hidden.value = hidden.value.split(',').map(w => w.trim()).filter(w => w !== word).join(','); drawTags(key); }
+        async function saveModuleSettings() { const m = MODULES.find(x => x.id === activeModuleId), updates = {}; m.settings.forEach(s => { const el = document.getElementById(`set-${s}`); updates[s] = el.type === 'checkbox' ? el.checked : el.value; }); const res = await fetch(`/api/guilds/${currentGuildId}/settings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updates) }); if (res.ok) { guildData.settings = await res.json(); updateModuleDots(); exitModule(); } }
+        function handleExitAttempt() { if (activeModuleId === 'feeds') { history.back(); return; } const m = MODULES.find(x => x.id === activeModuleId); const changed = m.settings.some(s => { const el = document.getElementById(`set-${s}`); return (el.type === 'checkbox' ? el.checked : el.value) != (originalSettings[s] || (el.type === 'checkbox' ? false : "")); }); if (changed) toggleExitModal(true); else history.back(); }
+        function toggleExitModal(show) { document.getElementById('exit-modal').style.display = show ? 'flex' : 'none'; }
+        async function saveAndExit() { await saveModuleSettings(); toggleExitModal(false); }
+        function discardAndExit() { toggleExitModal(false); history.back(); }
+        function exitModule() { document.getElementById('module-layer').classList.remove('active'); }
+        function toggleDrawer() { document.getElementById('drawer-layer').classList.toggle('open'); }
+        function showServerSelector() { const list = document.getElementById('server-list'); list.innerHTML = allGuilds.map(g => `<div onclick="selectGuild('${g.id}')" class="bg-surface p-5 rounded-2xl flex items-center gap-5 border border-white/5 active:bg-primary transition-all"><img src="${g.iconUrl}" class="w-14 h-14 rounded-xl object-cover shadow-lg"><div class="font-bold text-lg tracking-tight">${g.name}</div></div>`).join(''); document.getElementById('server-modal').style.display = 'flex'; if (document.getElementById('drawer-layer').classList.contains('open')) toggleDrawer(false); }
+        function hideServerSelector() { document.getElementById('server-modal').style.display = 'none'; }
+        function showLoading() { document.getElementById('loading').style.display = 'flex'; }
+        function hideLoading() { document.getElementById('loading').style.display = 'none'; }
+        function insertVar(inputId, v) { const el = document.getElementById(inputId); const s = el.selectionStart, e = el.selectionEnd, t = el.value; el.value = t.substring(0, s) + v + t.substring(e); el.focus(); el.selectionStart = el.selectionEnd = s + v.length; updatePreview(inputId.replace('set-', '')); }
+        function updatePreview(key) { const el = document.getElementById(`set-${key}`), preview = document.getElementById(`preview-${key}`); if (!el || !preview) return; preview.innerHTML = el.value.replace(/{user}/g, '<b class="text-primary">@User</b>').replace(/{username}/g, '<b class="text-primary">User123</b>').replace(/{server}/g, `<b class="text-primary">${guildData.guild.name}</b>`).replace(/{count}/g, `<b class="text-primary">${guildData.guild.memberCount}</b>`).replace(/{owner}/g, `<b class="text-primary">${guildData.guild.ownerName}</b>`).replace(/{date}/g, `<b class="text-primary">${new Date().toLocaleDateString()}</b>`) || '<span class="opacity-30 italic">No message set...</span>'; }
         init();
     </script>
 </body>
