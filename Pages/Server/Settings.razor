@@ -1,0 +1,102 @@
+@page "/server/{GuildId}/settings"
+@using Discord.WebSocket
+@using Scrappy.Shared
+@using Scrappy.Data
+@using Microsoft.EntityFrameworkCore
+@inject DiscordSocketClient DiscordClient
+@inject IServiceScopeFactory ScopeFactory
+
+<ServerShell GuildId="@GuildId" ActivePage="settings">
+    @if (Guild != null)
+    {
+        <div class="glass p-8 rounded-3xl max-w-3xl mx-auto">
+            <div class="flex justify-between items-center mb-8">
+                <div>
+                    <h2 class="text-xl font-bold">General Settings</h2>
+                    <p class="text-xs text-gray-500 mt-1">Manage core bot configuration.</p>
+                </div>
+                @if (showSaveSuccess)
+                {
+                    <span class="text-xs font-bold text-green-500 bg-green-500/10 px-3 py-1 rounded-full border border-green-500/20 animate-pulse">
+                        <span class="material-icons-round text-sm align-middle mr-1">check</span>
+                        Saved
+                    </span>
+                }
+            </div>
+
+            <div class="space-y-6">
+                <!-- Module Toggles -->
+                <div class="glass p-4 rounded-2xl flex items-center justify-between">
+                    <div>
+                        <h3 class="font-bold text-sm">Hello Command</h3>
+                        <p class="text-xs text-gray-500">Enable the /helloscrappy command.</p>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" @bind="sayHelloEnabled" class="sr-only peer">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+                    </label>
+                </div>
+
+                <div class="pt-4 flex justify-end">
+                    <button @onclick="SaveSettings" class="px-8 py-3 bg-primary text-white rounded-xl font-bold shadow-lg shadow-primary/20 hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all">
+                        Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</ServerShell>
+
+@code {
+    [Parameter] public string GuildId { get; set; } = "";
+
+    private SocketGuild? Guild => ulong.TryParse(GuildId, out var id) ? DiscordClient.GetGuild(id) : null;
+
+    private bool sayHelloEnabled = true;
+    private bool showSaveSuccess = false;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Guild != null)
+        {
+            await LoadSettings();
+        }
+    }
+
+    private async Task LoadSettings()
+    {
+        using (var scope = ScopeFactory.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BotContext>();
+            var settings = await db.GuildSettings.FindAsync(Guild!.Id);
+            if (settings != null)
+            {
+                sayHelloEnabled = settings.SayHelloEnabled;
+            }
+        }
+    }
+
+    private async Task SaveSettings()
+    {
+        using (var scope = ScopeFactory.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BotContext>();
+            var settings = await db.GuildSettings.FindAsync(Guild!.Id);
+            
+            if (settings == null)
+            {
+                settings = new GuildSettings { GuildId = Guild.Id };
+                db.GuildSettings.Add(settings);
+            }
+
+            settings.SayHelloEnabled = sayHelloEnabled;
+
+            await db.SaveChangesAsync();
+            
+            showSaveSuccess = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            showSaveSuccess = false;
+        }
+    }
+}

@@ -1,0 +1,209 @@
+@page "/server/{GuildId}/automation"
+@using Discord.WebSocket
+@using Scrappy.Shared
+@using Scrappy.Data
+@using Microsoft.EntityFrameworkCore
+@inject DiscordSocketClient DiscordClient
+@inject IServiceScopeFactory ScopeFactory
+
+<ServerShell GuildId="@GuildId" ActivePage="automation">
+    @if (Guild != null)
+    {
+        <div class="glass p-8 rounded-3xl max-w-3xl mx-auto">
+            <div class="flex justify-between items-center mb-8">
+                <div>
+                    <h2 class="text-xl font-bold">Automation Rules</h2>
+                    <p class="text-xs text-gray-500 mt-1">Configure automated actions for your server.</p>
+                </div>
+                @if (showSaveSuccess)
+                {
+                    <span class="text-xs font-bold text-green-500 bg-green-500/10 px-3 py-1 rounded-full border border-green-500/20 animate-pulse">
+                        <span class="material-icons-round text-sm align-middle mr-1">check</span>
+                        Saved
+                    </span>
+                }
+            </div>
+
+            <div class="space-y-8">
+                <!-- Welcome Section -->
+                <div class="space-y-4">
+                    <h3 class="text-sm font-bold uppercase tracking-wider text-gray-400 flex items-center gap-2">
+                        <span class="material-icons-round text-base">waving_hand</span>
+                        Welcome New Members
+                    </h3>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-bold text-gray-500 mb-2 ml-1">Message Content</label>
+                            <textarea @bind="welcomeMessage" class="w-full bg-white/50 dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-primary outline-none transition-all h-32 resize-none" placeholder="Welcome {user} to {server}!"></textarea>
+                            <div class="flex gap-2 mt-2">
+                                <span class="px-2 py-1 rounded-lg bg-gray-100 dark:bg-white/5 text-[10px] text-gray-500 font-mono cursor-pointer hover:text-primary" @onclick='() => welcomeMessage += "{user}"'>{user}</span>
+                                <span class="px-2 py-1 rounded-lg bg-gray-100 dark:bg-white/5 text-[10px] text-gray-500 font-mono cursor-pointer hover:text-primary" @onclick='() => welcomeMessage += "{server}"'>{server}</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 mb-2 ml-1">Target Channel</label>
+                            <div class="relative">
+                                <select @bind="welcomeChannelId" class="w-full appearance-none bg-white/50 dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-primary outline-none transition-all">
+                                    <option value="">Disabled</option>
+                                    @foreach (var channel in Guild.TextChannels.OrderBy(c => c.Position))
+                                    {
+                                        <option value="@channel.Id">#@channel.Name</option>
+                                    }
+                                </select>
+                                <span class="material-icons-round absolute right-4 top-4 text-gray-400 pointer-events-none">expand_more</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="h-px bg-gradient-to-r from-transparent via-gray-200 dark:via-white/10 to-transparent"></div>
+
+                <!-- Goodbye Section -->
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-sm font-bold uppercase tracking-wider text-gray-400 flex items-center gap-2">
+                            <span class="material-icons-round text-base">logout</span>
+                            Goodbye Messages
+                        </h3>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" @bind="goodbyeEnabled" class="sr-only peer">
+                            <div class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-primary"></div>
+                        </label>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-bold text-gray-500 mb-2 ml-1">Message Content</label>
+                            <textarea @bind="goodbyeMessage" class="w-full bg-white/50 dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-primary outline-none transition-all h-32 resize-none" placeholder="{user} has left the server."></textarea>
+                            <div class="flex gap-2 mt-2">
+                                <span class="px-2 py-1 rounded-lg bg-gray-100 dark:bg-white/5 text-[10px] text-gray-500 font-mono cursor-pointer hover:text-primary" @onclick='() => goodbyeMessage += "{user}"'>{user}</span>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 mb-2 ml-1">Target Channel</label>
+                            <div class="relative">
+                                <select @bind="goodbyeChannelId" class="w-full appearance-none bg-white/50 dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-primary outline-none transition-all">
+                                    <option value="">Disabled</option>
+                                    @foreach (var channel in Guild.TextChannels.OrderBy(c => c.Position))
+                                    {
+                                        <option value="@channel.Id">#@channel.Name</option>
+                                    }
+                                </select>
+                                <span class="material-icons-round absolute right-4 top-4 text-gray-400 pointer-events-none">expand_more</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="h-px bg-gradient-to-r from-transparent via-gray-200 dark:via-white/10 to-transparent"></div>
+
+                <!-- Onboarding Section -->
+                <div class="space-y-4">
+                    <h3 class="text-sm font-bold uppercase tracking-wider text-gray-400 flex items-center gap-2">
+                        <span class="material-icons-round text-base">badge</span>
+                        Onboarding
+                    </h3>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div class="md:col-span-1">
+                            <label class="block text-xs font-bold text-gray-500 mb-2 ml-1">Auto-Assign Role</label>
+                            <div class="relative">
+                                <select @bind="autoRoleId" class="w-full appearance-none bg-white/50 dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-2xl p-4 text-sm focus:ring-2 focus:ring-primary outline-none transition-all">
+                                    <option value="">Disabled</option>
+                                    @foreach (var role in Guild.Roles.OrderByDescending(r => r.Position).Where(r => !r.IsManaged && !r.IsEveryone))
+                                    {
+                                        <option value="@role.Id">@role.Name</option>
+                                    }
+                                </select>
+                                <span class="material-icons-round absolute right-4 top-4 text-gray-400 pointer-events-none">expand_more</span>
+                            </div>
+                            <p class="text-[10px] text-gray-400 mt-2 ml-1">Role assigned immediately upon joining.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="pt-4 flex justify-end">
+                    <button @onclick="SaveSettings" class="px-8 py-3 bg-primary text-white rounded-xl font-bold shadow-lg shadow-primary/20 hover:shadow-primary/40 hover:-translate-y-0.5 active:translate-y-0 active:scale-95 transition-all">
+                        Save Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    }
+</ServerShell>
+
+@code {
+    [Parameter] public string GuildId { get; set; } = "";
+
+    private SocketGuild? Guild => ulong.TryParse(GuildId, out var id) ? DiscordClient.GetGuild(id) : null;
+
+    private string welcomeMessage = "";
+    private ulong? welcomeChannelId;
+    
+    private string goodbyeMessage = "";
+    private ulong? goodbyeChannelId;
+    private bool goodbyeEnabled = true;
+
+    private ulong? autoRoleId;
+    private bool showSaveSuccess = false;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Guild != null)
+        {
+            await LoadSettings();
+        }
+    }
+
+    private async Task LoadSettings()
+    {
+        using (var scope = ScopeFactory.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BotContext>();
+            var settings = await db.GuildSettings.FindAsync(Guild!.Id);
+            if (settings != null)
+            {
+                welcomeMessage = settings.WelcomeMessage ?? "Welcome {user} to {server}!";
+                welcomeChannelId = settings.WelcomeChannelId;
+                
+                goodbyeMessage = settings.GoodbyeMessage ?? "{user} has left the server.";
+                goodbyeChannelId = settings.GoodbyeChannelId;
+                goodbyeEnabled = settings.GoodbyeEnabled;
+
+                autoRoleId = settings.AutoRoleId;
+            }
+        }
+    }
+
+    private async Task SaveSettings()
+    {
+        using (var scope = ScopeFactory.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BotContext>();
+            var settings = await db.GuildSettings.FindAsync(Guild!.Id);
+            
+            if (settings == null)
+            {
+                settings = new GuildSettings { GuildId = Guild.Id };
+                db.GuildSettings.Add(settings);
+            }
+
+            settings.WelcomeMessage = welcomeMessage;
+            settings.WelcomeChannelId = welcomeChannelId == 0 ? null : welcomeChannelId;
+            
+            settings.GoodbyeMessage = goodbyeMessage;
+            settings.GoodbyeChannelId = goodbyeChannelId == 0 ? null : goodbyeChannelId;
+            settings.GoodbyeEnabled = goodbyeEnabled;
+
+            settings.AutoRoleId = autoRoleId == 0 ? null : autoRoleId;
+
+            await db.SaveChangesAsync();
+            
+            showSaveSuccess = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            showSaveSuccess = false;
+        }
+    }
+}

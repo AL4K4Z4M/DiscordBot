@@ -1,0 +1,177 @@
+@page "/server/{GuildId}/features"
+@using Discord.WebSocket
+@using Scrappy.Shared
+@using Scrappy.Data
+@using Scrappy.Pages.Server.Components
+@using Microsoft.EntityFrameworkCore
+@inject DiscordSocketClient DiscordClient
+@inject IServiceScopeFactory ScopeFactory
+@inject NavigationManager Navigation
+
+<ServerShell GuildId="@GuildId" ActivePage="features">
+    @if (Guild != null)
+    {
+        <div class="max-w-6xl mx-auto space-y-12">
+            
+            <!-- Automation -->
+            <section>
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                        <span class="material-icons-round text-xl">smart_toy</span>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-bold">Automation</h2>
+                        <p class="text-xs text-gray-500">Automatic responses and flows.</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <FeatureCard Title="Welcome Messages" Description="Greet new members with a custom message." Icon="waving_hand" 
+                                 IsEnabled="@settings.WelcomeEnabled" OnToggle="@(v => Toggle("Welcome", v))" ConfigUrl="@($"/server/{GuildId}/automation")" />
+                    <FeatureCard Title="Auto-Role" Description="Automatically assign a role upon joining." Icon="badge" 
+                                 IsEnabled="@settings.AutoRoleEnabled" OnToggle="@(v => Toggle("AutoRole", v))" ConfigUrl="@($"/server/{GuildId}/automation")" />
+                    <FeatureCard Title="Social Media Feeds" Description="Post updates from YouTube/RSS." Icon="rss_feed" 
+                                 IsEnabled="@settings.SocialFeedsEnabled" OnToggle="@(v => Toggle("SocialFeeds", v))" />
+                </div>
+            </section>
+
+            <!-- Moderation -->
+            <section>
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center text-red-500">
+                        <span class="material-icons-round text-xl">gavel</span>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-bold">Moderation</h2>
+                        <p class="text-xs text-gray-500">Tools to keep your server safe.</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <FeatureCard Title="Kick User" Description="Allow admins to kick members." Icon="person_remove" 
+                                 IsEnabled="@settings.KickEnabled" OnToggle="@(v => Toggle("Kick", v))" />
+                    <FeatureCard Title="Ban User" Description="Allow admins to ban members." Icon="block" 
+                                 IsEnabled="@settings.BanEnabled" OnToggle="@(v => Toggle("Ban", v))" />
+                    <FeatureCard Title="Timeout / Mute" Description="Temporarily restrict user chat." Icon="timer" 
+                                 IsEnabled="@settings.MuteEnabled" OnToggle="@(v => Toggle("Mute", v))" />
+                    <FeatureCard Title="Purge Messages" Description="Bulk delete channel history." Icon="delete_sweep" 
+                                 IsEnabled="@settings.PurgeEnabled" OnToggle="@(v => Toggle("Purge", v))" />
+                    <FeatureCard Title="Warning System" Description="Track strikes against users." Icon="warning" 
+                                 IsEnabled="@settings.WarnEnabled" OnToggle="@(v => Toggle("Warn", v))" />
+                    <FeatureCard Title="Mod Logs" Description="Audit log for bot actions." Icon="history_edu" 
+                                 IsEnabled="@settings.ModLogEnabled" OnToggle="@(v => Toggle("ModLog", v))" />
+                </div>
+            </section>
+
+            <!-- Utility -->
+            <section>
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center text-green-500">
+                        <span class="material-icons-round text-xl">construction</span>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-bold">Utility</h2>
+                        <p class="text-xs text-gray-500">Helper tools for everyone.</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <FeatureCard Title="Server Info" Description="Display server statistics." Icon="dns" 
+                                 IsEnabled="@settings.ServerInfoEnabled" OnToggle="@(v => Toggle("ServerInfo", v))" />
+                    <FeatureCard Title="User Info" Description="Display user profile details." Icon="account_circle" 
+                                 IsEnabled="@settings.UserInfoEnabled" OnToggle="@(v => Toggle("UserInfo", v))" />
+                    <FeatureCard Title="Avatar Fetcher" Description="Get high-res user avatars." Icon="image" 
+                                 IsEnabled="@settings.AvatarEnabled" OnToggle="@(v => Toggle("Avatar", v))" />
+                    <FeatureCard Title="Polls" Description="Create reaction-based polls." Icon="poll" 
+                                 IsEnabled="@settings.PollsEnabled" OnToggle="@(v => Toggle("Polls", v))" />
+                    <FeatureCard Title="Reminders" Description="Set personal timers." Icon="alarm" 
+                                 IsEnabled="@settings.RemindersEnabled" OnToggle="@(v => Toggle("Reminders", v))" />
+                    <FeatureCard Title="Free Games Tracker" Description="Auto-post free game deals." Icon="redeem" 
+                                 IsEnabled="@settings.FreeGamesEnabled" OnToggle="@(v => Toggle("FreeGames", v))" />
+                </div>
+            </section>
+
+            <!-- Data & Analytics (Phase 4) -->
+            <section>
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 rounded-xl bg-accent-teal/10 flex items-center justify-center text-accent-teal">
+                        <span class="material-icons-round text-xl">insights</span>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-bold">Data & Analytics</h2>
+                        <p class="text-xs text-gray-500">Premium insights and data retention.</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <FeatureCard Title="Engagement Analytics" Description="Track message and voice activity." Icon="leaderboard" 
+                                 IsEnabled="@settings.AnalyticsEnabled" OnToggle="@(v => Toggle("Analytics", v))" ConfigUrl="@($"/server/{GuildId}/analytics")" />
+                    <FeatureCard Title="Message Logging" Description="Record full message content for transcripts." Icon="description" 
+                                 IsEnabled="@settings.MessageLoggingEnabled" OnToggle="@(v => Toggle("Logging", v))" />
+                </div>
+            </section>
+
+        </div>
+    }
+</ServerShell>
+
+@code {
+    [Parameter] public string GuildId { get; set; } = "";
+
+    private SocketGuild? Guild => ulong.TryParse(GuildId, out var id) ? DiscordClient.GetGuild(id) : null;
+    private GuildSettings settings = new GuildSettings();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Guild != null) await LoadSettings();
+    }
+
+    private async Task LoadSettings()
+    {
+        using (var scope = ScopeFactory.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BotContext>();
+            var existing = await db.GuildSettings.FindAsync(Guild!.Id);
+            if (existing != null) settings = existing;
+            else settings = new GuildSettings { GuildId = Guild.Id };
+        }
+    }
+
+    private async Task Toggle(string feature, bool enabled)
+    {
+        using (var scope = ScopeFactory.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<BotContext>();
+            var dbSettings = await db.GuildSettings.FindAsync(Guild!.Id);
+            
+            if (dbSettings == null)
+            {
+                dbSettings = new GuildSettings { GuildId = Guild.Id };
+                db.GuildSettings.Add(dbSettings);
+            }
+
+            // Map Toggle to Property
+            switch (feature)
+            {
+                case "Welcome": dbSettings.WelcomeEnabled = enabled; settings.WelcomeEnabled = enabled; break;
+                case "AutoRole": dbSettings.AutoRoleEnabled = enabled; settings.AutoRoleEnabled = enabled; break;
+                case "SocialFeeds": dbSettings.SocialFeedsEnabled = enabled; settings.SocialFeedsEnabled = enabled; break;
+                
+                case "Kick": dbSettings.KickEnabled = enabled; settings.KickEnabled = enabled; break;
+                case "Ban": dbSettings.BanEnabled = enabled; settings.BanEnabled = enabled; break;
+                case "Mute": dbSettings.MuteEnabled = enabled; settings.MuteEnabled = enabled; break;
+                case "Purge": dbSettings.PurgeEnabled = enabled; settings.PurgeEnabled = enabled; break;
+                case "Warn": dbSettings.WarnEnabled = enabled; settings.WarnEnabled = enabled; break;
+                case "ModLog": dbSettings.ModLogEnabled = enabled; settings.ModLogEnabled = enabled; break;
+
+                case "ServerInfo": dbSettings.ServerInfoEnabled = enabled; settings.ServerInfoEnabled = enabled; break;
+                case "UserInfo": dbSettings.UserInfoEnabled = enabled; settings.UserInfoEnabled = enabled; break;
+                case "Avatar": dbSettings.AvatarEnabled = enabled; settings.AvatarEnabled = enabled; break;
+                case "Polls": dbSettings.PollsEnabled = enabled; settings.PollsEnabled = enabled; break;
+                case "Reminders": dbSettings.RemindersEnabled = enabled; settings.RemindersEnabled = enabled; break;
+                case "FreeGames": dbSettings.FreeGamesEnabled = enabled; settings.FreeGamesEnabled = enabled; break;
+
+                case "Analytics": dbSettings.AnalyticsEnabled = enabled; settings.AnalyticsEnabled = enabled; break;
+                case "Logging": dbSettings.MessageLoggingEnabled = enabled; settings.MessageLoggingEnabled = enabled; break;
+            }
+
+            await db.SaveChangesAsync();
+        }
+    }
+}

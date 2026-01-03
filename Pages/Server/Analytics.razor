@@ -1,0 +1,155 @@
+@page "/server/{GuildId}/analytics"
+@using Discord.WebSocket
+@using Scrappy.Shared
+@using Scrappy.Data
+@using Microsoft.EntityFrameworkCore
+@inject DiscordSocketClient DiscordClient
+@inject IServiceScopeFactory ScopeFactory
+
+<ServerShell GuildId="@GuildId" ActivePage="analytics">
+    @if (Guild != null)
+    {
+        <div class="max-w-6xl mx-auto space-y-8 pb-12">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h2 class="text-2xl font-bold">Engagement Analytics</h2>
+                    <p class="text-sm text-gray-500 mt-1">Deep insights into your community's activity.</p>
+                </div>
+                <div class="glass px-4 py-2 rounded-2xl flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                    <span class="text-xs font-bold text-gray-500 uppercase tracking-widest">Live Data</span>
+                </div>
+            </div>
+
+            <!-- Stats Overview -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="glass p-6 rounded-3xl text-center">
+                    <div class="text-3xl font-black text-primary mb-1">@totalMessages</div>
+                    <p class="text-[10px] uppercase font-bold text-gray-400">Total Messages</p>
+                </div>
+                <div class="glass p-6 rounded-3xl text-center">
+                    <div class="text-3xl font-black text-accent-teal mb-1">@messagesToday</div>
+                    <p class="text-[10px] uppercase font-bold text-gray-400">Messages Today</p>
+                </div>
+                <div class="glass p-6 rounded-3xl text-center">
+                    <div class="text-3xl font-black text-accent-pink mb-1">@uniqueChatters</div>
+                    <p class="text-[10px] uppercase font-bold text-gray-400">Unique Chatters</p>
+                </div>
+                <div class="glass p-6 rounded-3xl text-center">
+                    <div class="text-3xl font-black text-accent-yellow mb-1">@totalVoiceHours<span class="text-sm font-bold">h</span></div>
+                    <p class="text-[10px] uppercase font-bold text-gray-400">Voice Activity</p>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Top Contributors -->
+                <div class="glass p-8 rounded-3xl">
+                    <h3 class="font-bold text-lg mb-6 flex items-center gap-2">
+                        <span class="material-icons-round text-primary">leaderboard</span>
+                        Top Contributors
+                    </h3>
+                    <div class="space-y-4">
+                        @if (topUsers == null)
+                        {
+                            <p class="text-sm text-gray-500 italic">Calculating...</p>
+                        }
+                        else
+                        {
+                            @foreach (var user in topUsers)
+                            {
+                                var discordUser = Guild.GetUser(user.UserId);
+                                <div class="flex items-center gap-4">
+                                    <img src="@(discordUser?.GetAvatarUrl() ?? "https://cdn.discordapp.com/embed/avatars/0.png")" class="w-10 h-10 rounded-full" />
+                                    <div class="flex-1">
+                                        <div class="flex justify-between items-center mb-1">
+                                            <span class="text-sm font-bold">@(discordUser?.Username ?? "Unknown User")</span>
+                                            <span class="text-xs text-gray-400">@user.Count msgs</span>
+                                        </div>
+                                        <div class="h-1.5 w-full bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden">
+                                            <div class="h-full bg-primary" style="width: @(GetPercentage(user.Count))%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+
+                <!-- Active Hours (Mock Visualization) -->
+                <div class="glass p-8 rounded-3xl">
+                    <h3 class="font-bold text-lg mb-6 flex items-center gap-2">
+                        <span class="material-icons-round text-accent-pink">schedule</span>
+                        Peak Activity Hours
+                    </h3>
+                    <div class="h-48 flex items-end justify-between gap-1 px-2">
+                        @for (int i = 0; i < 24; i++)
+                        {
+                            var h = Random.Shared.Next(10, 100);
+                            <div class="flex-1 bg-accent-pink/20 hover:bg-accent-pink transition-colors rounded-t-lg relative group" style="height: @(h)%">
+                                <div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                                    @i:00 - @h%
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    <div class="flex justify-between mt-4 text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                        <span>12 AM</span>
+                        <span>12 PM</span>
+                        <span>11 PM</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    }
+</ServerShell>
+
+@code {
+    [Parameter] public string GuildId { get; set; } = "";
+    private SocketGuild? Guild => ulong.TryParse(GuildId, out var id) ? DiscordClient.GetGuild(id) : null;
+
+    private int totalMessages;
+    private int messagesToday;
+    private int uniqueChatters;
+    private double totalVoiceHours;
+    private List<UserStat>? topUsers;
+    private int maxMsgCount = 1;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Guild != null) await LoadAnalytics();
+    }
+
+    private async Task LoadAnalytics()
+    {
+        using var scope = ScopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<BotContext>();
+        var guildId = Guild!.Id;
+
+        totalMessages = await db.MessageLogs.CountAsync(l => l.GuildId == guildId);
+        messagesToday = await db.MessageLogs.CountAsync(l => l.GuildId == guildId && l.Timestamp >= DateTime.UtcNow.Date);
+        uniqueChatters = await db.MessageLogs.Where(l => l.GuildId == guildId).Select(l => l.UserId).Distinct().CountAsync();
+        
+        var voiceSeconds = await db.VoiceLogs
+            .Where(l => l.GuildId == guildId && l.LeaveTime != null)
+            .SumAsync(l => (l.LeaveTime!.Value - l.JoinTime).TotalSeconds);
+        totalVoiceHours = Math.Round(voiceSeconds / 3600, 1);
+
+        topUsers = await db.MessageLogs
+            .Where(l => l.GuildId == guildId)
+            .GroupBy(l => l.UserId)
+            .Select(g => new UserStat { UserId = g.Key, Count = g.Count() })
+            .OrderByDescending(x => x.Count)
+            .Take(5)
+            .ToListAsync();
+
+        if (topUsers.Any()) maxMsgCount = topUsers.First().Count;
+    }
+
+    private double GetPercentage(int count) => (double)count / maxMsgCount * 100;
+
+    private class UserStat
+    {
+        public ulong UserId { get; set; }
+        public int Count { get; set; }
+    }
+}

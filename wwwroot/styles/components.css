@@ -1,0 +1,42 @@
+/* Component Styles */
+
+#blazor-error-ui {
+    background: #FEF3C7; /* Light Yellow */
+    color: #92400E; /* Dark Orange/Brown */
+    bottom: 0;
+    box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.1);
+    display: none;
+    left: 0;
+    padding: 1rem;
+    position: fixed;
+    width: 100%;
+    z-index: 1000;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    position: absolute;
+    right: 1rem;
+    top: 1rem;
+    font-weight: bold;
+}
+
+/* Glassmorphism utility */
+.glass {
+    /* Light Mode Glass */
+    background: linear-gradient(145deg, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.1));
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+}
+
+/* Dark Mode Glass Override */
+.dark .glass {
+    background: linear-gradient(145deg, rgba(40, 40, 55, 0.6), rgba(40, 40, 55, 0.2));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4);
+}
+
+

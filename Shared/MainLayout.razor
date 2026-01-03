@@ -1,0 +1,15 @@
+@inherits LayoutComponentBase
+
+<div class="max-w-md mx-auto min-h-screen py-8 relative">
+    <!-- Animated Background Blobs -->
+    <div class="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+        <div class="absolute top-0 left-0 w-full h-full bg-background-light dark:bg-background-dark transition-colors duration-300"></div>
+        <div class="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-primary/20 rounded-full blur-3xl animate-pulse-slow"></div>
+        <div class="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-purple-500/20 rounded-full blur-3xl animate-pulse-slow" style="animation-delay: 1s;"></div>
+        <div class="absolute top-[40%] left-[30%] w-[30%] h-[30%] bg-pink-500/10 rounded-full blur-3xl animate-pulse-slow" style="animation-delay: 2s;"></div>
+    </div>
+
+    <main class="relative z-10">
+        @Body
+    </main>
+</div>

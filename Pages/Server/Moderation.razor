@@ -1,0 +1,209 @@
+@page "/server/{GuildId}/moderation"
+@using Discord
+@using Discord.WebSocket
+@using Discord.Rest
+@using Scrappy.Shared
+@using Scrappy.Pages.Server.Components
+@inject DiscordSocketClient DiscordClient
+
+<ServerShell GuildId="@GuildId" ActivePage="moderation">
+    @if (Guild != null)
+    {
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Left Column: Quick Actions -->
+            <div class="lg:col-span-1 space-y-6 relative z-10">
+                <div class="glass p-6 rounded-3xl">
+                    <h3 class="font-bold mb-4">Quick Actions (Calls: @debugCount)</h3>
+                    <div class="space-y-3">
+                        <button class="w-full flex items-center gap-3 p-3 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all font-bold text-sm cursor-pointer"
+                                @onclick="HandleKick">
+                            <span class="material-icons-round">person_remove</span>
+                            Kick User
+                        </button>
+                        <button class="w-full flex items-center gap-3 p-3 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all font-bold text-sm"
+                                @onclick='() => OpenAction("Ban")'>
+                            <span class="material-icons-round">block</span>
+                            Ban User
+                        </button>
+                        <button class="w-full flex items-center gap-3 p-3 rounded-xl bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500 hover:text-white transition-all font-bold text-sm"
+                                @onclick='() => OpenAction("Timeout")'>
+                            <span class="material-icons-round">timer</span>
+                            Timeout User
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Audit Log -->
+            <div class="lg:col-span-2">
+                <div class="glass p-6 rounded-3xl h-full">
+                    <div class="flex justify-between items-center mb-6">
+                        <h3 class="font-bold">Recent Mod Actions</h3>
+                        <button class="text-xs font-bold text-primary hover:underline">View All</button>
+                    </div>
+
+                    <div class="space-y-4">
+                        @if (auditLogs == null)
+                        {
+                            <div class="flex justify-center p-8">
+                                <div class="animate-spin w-8 h-8 border-4 border-primary border-t-transparent rounded-full"></div>
+                            </div>
+                        }
+                        else if (!auditLogs.Any())
+                        {
+                            <div class="text-center p-8 text-gray-500 text-sm">No recent logs found.</div>
+                        }
+                        else
+                        {
+                            @foreach (var log in auditLogs)
+                            {
+                                <div class="flex items-start gap-4 p-4 rounded-2xl bg-white/50 dark:bg-white/5 border border-transparent hover:border-glass-border transition-colors">
+                                    <div class="w-10 h-10 rounded-full bg-gray-100 dark:bg-white/10 flex items-center justify-center text-gray-500 shrink-0">
+                                        <span class="material-icons-round text-sm">history</span>
+                                    </div>
+                                    <div class="flex-1">
+                                        <div class="flex justify-between items-start">
+                                            <h4 class="font-bold text-sm">@log.Action</h4>
+                                            <span class="text-[10px] text-gray-400 font-mono">@log.CreatedAt.ToLocalTime().ToString("g")</span>
+                                        </div>
+                                        <p class="text-xs text-gray-500 mt-1">
+                                            <span class="font-bold text-gray-700 dark:text-gray-300">@log.User.Username</span> performed action
+                                        </p>
+                                        @if (!string.IsNullOrEmpty(log.Reason))
+                                        {
+                                            <p class="text-[10px] text-gray-400 mt-2 bg-black/5 dark:bg-black/20 p-1.5 rounded inline-block">Reason: @log.Reason</p>
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- User Selection Modal -->
+        @if (showUserSelector)
+        {
+            <Modal Title="@($"Select User to {activeAction}")" OnClose="() => showUserSelector = false">
+                <UserSelector Guild="@Guild" OnUserSelected="OnUserSelected" />
+            </Modal>
+        }
+
+        <!-- Confirmation Modal -->
+        @if (showConfirmModal && targetUser != null)
+        {
+            <Modal Title="@($"Confirm {activeAction}")" OnClose="() => showConfirmModal = false">
+                <div class="space-y-4">
+                    <div class="flex items-center gap-4 p-4 bg-gray-50 dark:bg-white/5 rounded-2xl">
+                        <img src="@(targetUser.GetAvatarUrl() ?? targetUser.GetDefaultAvatarUrl())" class="w-12 h-12 rounded-full" />
+                        <div>
+                            <h4 class="font-bold text-lg">@targetUser.Username</h4>
+                            <p class="text-xs text-gray-500">@targetUser.Id</p>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-gray-500 mb-2">Reason</label>
+                        <textarea @bind="actionReason" class="w-full bg-white/50 dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-xl p-3 text-sm focus:ring-2 focus:ring-primary outline-none transition-all h-24 resize-none" placeholder="Reason for this action..."></textarea>
+                    </div>
+
+                    @if (activeAction == "Timeout")
+                    {
+                        <div>
+                            <label class="block text-xs font-bold text-gray-500 mb-2">Duration (Minutes)</label>
+                            <input type="number" @bind="timeoutMinutes" class="w-full bg-white/50 dark:bg-black/20 border border-gray-200 dark:border-white/10 rounded-xl p-3 text-sm focus:ring-2 focus:ring-primary outline-none transition-all" />
+                        </div>
+                    }
+
+                    <div class="flex gap-3 pt-4">
+                        <button class="flex-1 py-3 rounded-xl font-bold text-gray-500 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors" @onclick="() => showConfirmModal = false">Cancel</button>
+                        <button class="flex-1 py-3 rounded-xl font-bold text-white bg-red-500 shadow-lg shadow-red-500/30 hover:bg-red-600 transition-all" @onclick="ExecuteAction">
+                            Confirm @activeAction
+                        </button>
+                    </div>
+                </div>
+            </Modal>
+        }
+    }
+</ServerShell>
+
+@code {
+    [Parameter] public string GuildId { get; set; } = "";
+    private SocketGuild? Guild => ulong.TryParse(GuildId, out var id) ? DiscordClient.GetGuild(id) : null;
+    
+    private IReadOnlyCollection<RestAuditLogEntry>? auditLogs;
+
+    // State for Modals
+    private int debugCount = 0;
+    private bool showUserSelector = false;
+    private bool showConfirmModal = false;
+    private string activeAction = "";
+    private SocketGuildUser? targetUser;
+    private string actionReason = "";
+    private int timeoutMinutes = 60;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Guild != null)
+        {
+            try 
+            {
+                var logs = await Guild.GetAuditLogsAsync(10).FlattenAsync();
+                auditLogs = logs.ToList();
+            }
+            catch
+            {
+                auditLogs = Array.Empty<RestAuditLogEntry>();
+            }
+        }
+    }
+
+    private void HandleKick() => OpenAction("Kick");
+
+    private void OpenAction(string action)
+    {
+        Console.WriteLine($"[DEBUG] OpenAction called for: {action}");
+        debugCount++;
+        activeAction = action;
+        showUserSelector = true;
+        StateHasChanged();
+    }
+
+    private void OnUserSelected(SocketGuildUser user)
+    {
+        targetUser = user;
+        showUserSelector = false;
+        showConfirmModal = true;
+        actionReason = "";
+        StateHasChanged();
+    }
+
+    private async Task ExecuteAction()
+    {
+        if (targetUser == null) return;
+
+        try
+        {
+            switch (activeAction)
+            {
+                case "Kick":
+                    await targetUser.KickAsync(actionReason);
+                    break;
+                case "Ban":
+                    await Guild!.AddBanAsync(targetUser, 0, actionReason);
+                    break;
+                case "Timeout":
+                    await targetUser.SetTimeOutAsync(TimeSpan.FromMinutes(timeoutMinutes), new RequestOptions { AuditLogReason = actionReason });
+                    break;
+            }
+            showConfirmModal = false;
+            // Optionally refresh logs here
+        }
+        catch (Exception ex)
+        {
+            // Handle error (ideally show toast)
+            Console.WriteLine(ex.Message);
+        }
+    }
+}
