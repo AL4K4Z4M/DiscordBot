@@ -21,6 +21,7 @@ builder.Host.UseWindowsService();
 
 // 1. Setup Configuration
 builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+builder.Configuration.AddJsonFile("secrets.json", optional: true, reloadOnChange: true);
 builder.Configuration.AddEnvironmentVariables();
 
 // 2. Setup Database (SQLite)

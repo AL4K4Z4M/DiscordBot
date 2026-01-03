@@ -32,3 +32,4 @@ query
 start
 status
 stop
+secrets.json
